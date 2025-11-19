@@ -298,22 +298,32 @@ def main():
     ap.add_argument(
         "--cards",
         type=str,
-        default="out/cards_plant.jsonl",
-        help="Path to cards.jsonl (one JSON card per line).",
-    )
-    ap.add_argument(
-        "--out",
-        type=str,
-        default="out/cards_plant_report.pdf",
-        help="Output PDF path.",
+        default="cards.jsonl",
+        help="Name of the cards.jsonl file (must be in ../results/).",
     )
     args = ap.parse_args()
 
-    cards_path = Path(args.cards)
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Base results directory (always ../results relative to this script)
+    base = Path(__file__).resolve().parent.parent / "results"
+    base.mkdir(exist_ok=True)
+
+    # Always read the cards file from ../results/
+    cards_path = base / Path(args.cards).name
+
+    if not cards_path.exists():
+        raise FileNotFoundError(f"cards.jsonl not found: {cards_path}")
+
+    # OUTPUT NAME = input filename (without extension) + ".pdf"
+    pdf_name = cards_path.stem + ".pdf"
+    out_path = base / pdf_name
+
+    print(f"[INFO] Reading cards from: {cards_path}")
+    print(f"[INFO] Writing PDF to:      {out_path}")
 
     build_pdf(cards_path, out_path)
+    print("[DONE] PDF generated:", out_path)
+
+
 
 
 if __name__ == "__main__":
