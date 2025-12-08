@@ -611,7 +611,7 @@
     const isLocal = !window.location.hostname || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
     const API_BASE = isLocal
       ? "http://localhost:8000"
-      : "https://knowledge-cards-api.up.railway.app";  // <- Update this with your Railway URL
+      : "https://knowledge-cards-production.up.railway.app";
     
     console.log("[DEBUG] hostname:", window.location.hostname, "| isLocal:", isLocal, "| API_BASE:", API_BASE);
 
