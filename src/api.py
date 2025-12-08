@@ -92,14 +92,11 @@ ALLOWED_ORIGINS = [
     "https://knowledge-cards.pages.dev",  # <- Update with your Cloudflare Pages URL
 ]
 
-# In development, allow all origins; in production, restrict to ALLOWED_ORIGINS
-import os
-cors_origins = ["*"] if os.getenv("ENV", "development") == "development" else ALLOWED_ORIGINS
-
+# Allow all origins for simplicity (API is public anyway)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -306,6 +303,21 @@ def run_gemini(req: RunGeminiRequest) -> RunGeminiResponse:
 
 
 # ---------- File Upload / Download Endpoints ----------
+
+@app.get("/list_results")
+def list_results():
+    """List all result files available for download."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    files = []
+    for f in sorted(RESULTS_DIR.iterdir()):
+        if f.is_file():
+            files.append({
+                "name": f.name,
+                "type": f.suffix.lstrip("."),
+                "size": f.stat().st_size,
+            })
+    return {"results": files}
+
 
 @app.post("/upload_papers/{folder_name}")
 async def upload_papers(folder_name: str, files: List[UploadFile] = File(...)):
