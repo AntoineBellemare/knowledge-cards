@@ -29,6 +29,7 @@
           },
           backgroundImage: {
             grid: "radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.15) 1px, transparent 0)",
+            voronoi: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cpath fill='none' stroke='rgba(148,163,184,0.08)' stroke-width='0.5' d='M40 0v200M80 0v200M120 0v200M160 0v200M0 40h200M0 80h200M0 120h200M0 160h200M20 0l40 40M60 0l40 40M100 0l40 40M140 0l40 40M0 20l40 40M0 60l40 40M0 100l40 40M0 140l40 40M160 0l40 40M180 0l20 20M0 160l40 40M0 180l20 20M20 160l40 40M60 160l40 40M100 160l40 40M140 160l60 40M160 20l40 40M160 60l40 40M160 100l40 40M160 140l40 60M180 180l20 20'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='40' cy='40' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='120' cy='40' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='80' cy='80' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='160' cy='80' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='40' cy='120' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='120' cy='120' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='80' cy='160' r='2'/%3E%3Ccircle fill='rgba(148,163,184,0.04)' cx='160' cy='160' r='2'/%3E%3C/svg%3E\")",
           },
         },
       },
@@ -61,11 +62,79 @@
     .glass-soft {
       background: linear-gradient(
         135deg,
-        rgba(15, 23, 42, 0.88),
-        rgba(15, 23, 42, 0.82)
+        rgba(20, 28, 50, 0.95),
+        rgba(15, 23, 42, 0.9)
       );
-      border: 1px solid rgba(51, 65, 85, 0.7);
+      border: 1px solid rgba(71, 85, 105, 0.6);
       backdrop-filter: blur(12px);
+      box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.4),
+        0 0 1px rgba(148, 163, 184, 0.2);
+    }
+
+    /* Card variants for different sections */
+    .card-cyan {
+      background: linear-gradient(
+        135deg,
+        rgba(20, 35, 55, 0.95),
+        rgba(15, 28, 48, 0.9)
+      );
+      border: 1px solid rgba(45, 212, 255, 0.3);
+      box-shadow: 
+        0 4px 24px rgba(0, 0, 0, 0.5),
+        0 0 20px rgba(45, 212, 255, 0.08),
+        inset 0 1px 0 rgba(45, 212, 255, 0.1);
+    }
+
+    .card-purple {
+      background: linear-gradient(
+        135deg,
+        rgba(28, 20, 50, 0.95),
+        rgba(20, 15, 42, 0.9)
+      );
+      border: 1px solid rgba(168, 85, 255, 0.3);
+      box-shadow: 
+        0 4px 24px rgba(0, 0, 0, 0.5),
+        0 0 20px rgba(168, 85, 255, 0.08),
+        inset 0 1px 0 rgba(168, 85, 255, 0.1);
+    }
+
+    .card-pink {
+      background: linear-gradient(
+        135deg,
+        rgba(40, 20, 45, 0.95),
+        rgba(30, 15, 35, 0.9)
+      );
+      border: 1px solid rgba(249, 115, 255, 0.3);
+      box-shadow: 
+        0 4px 24px rgba(0, 0, 0, 0.5),
+        0 0 20px rgba(249, 115, 255, 0.08),
+        inset 0 1px 0 rgba(249, 115, 255, 0.1);
+    }
+
+    .card-neutral {
+      background: linear-gradient(
+        135deg,
+        rgba(30, 35, 50, 0.95),
+        rgba(20, 25, 40, 0.9)
+      );
+      border: 1px solid rgba(100, 116, 139, 0.4);
+      box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(148, 163, 184, 0.08);
+    }
+
+    .card-elevated {
+      background: linear-gradient(
+        135deg,
+        rgba(35, 40, 60, 0.98),
+        rgba(25, 30, 50, 0.95)
+      );
+      border: 1px solid rgba(100, 116, 139, 0.5);
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     .cyber-border {
@@ -109,6 +178,60 @@
       border: 1px solid rgba(148, 163, 184, 0.7);
       background: radial-gradient(circle at 0 0, rgba(45, 212, 255, 0.4), transparent 60%);
     }
+
+    /* Selection states for viz options */
+    .viz-selected-cyan {
+      border: 2px solid #2dd4ff !important;
+      background: rgba(45, 212, 255, 0.15) !important;
+      box-shadow: 0 0 20px rgba(45, 212, 255, 0.2);
+    }
+    .viz-selected-purple {
+      border: 2px solid #a855ff !important;
+      background: rgba(168, 85, 255, 0.15) !important;
+      box-shadow: 0 0 20px rgba(168, 85, 255, 0.2);
+    }
+    .viz-selected-pink {
+      border: 2px solid #f973ff !important;
+      background: rgba(249, 115, 255, 0.15) !important;
+      box-shadow: 0 0 20px rgba(249, 115, 255, 0.2);
+    }
+    .viz-selected-green {
+      border: 2px solid #4ade80 !important;
+      background: rgba(74, 222, 128, 0.15) !important;
+      box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
+    }
+    .viz-unselected {
+      border: 1px solid rgb(71, 85, 105) !important;
+      background: rgba(30, 41, 59, 0.4) !important;
+    }
+
+    /* Section headers with colored accents */
+    .section-header-cyan {
+      border-left: 3px solid rgba(45, 212, 255, 0.8);
+      padding-left: 12px;
+    }
+
+    .section-header-purple {
+      border-left: 3px solid rgba(168, 85, 255, 0.8);
+      padding-left: 12px;
+    }
+
+    .section-header-pink {
+      border-left: 3px solid rgba(249, 115, 255, 0.8);
+      padding-left: 12px;
+    }
+
+    /* Subtle hover effects */
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 0 30px rgba(45, 212, 255, 0.1);
+    }
+
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
   </style>
 </head>
 <body class="h-screen w-screen flex">
@@ -151,6 +274,11 @@
         <span class="text-slate-500">◎</span>
         <span>Runs / reports</span>
       </button>
+      <button id="nav-visualize"
+        class="w-full text-left px-3 py-2.5 rounded-md nav-idle flex items-center gap-2 font-mono text-xs transition-all">
+        <span class="text-slate-500">◈</span>
+        <span>Visualize cards</span>
+      </button>
       <button id="nav-editor"
         class="w-full text-left px-3 py-2.5 rounded-md nav-idle flex items-center gap-2 font-mono text-xs transition-all hidden">
         <span class="text-slate-500">✎</span>
@@ -168,7 +296,7 @@
 
   <!-- Main content -->
   <main class="flex-1 overflow-hidden px-4 py-4">
-    <div class="h-full w-full glass-soft rounded-xl shadow-neonSoft border cyber-border bg-grid bg-[size:20px_20px] overflow-auto flex flex-col">
+    <div class="h-full w-full glass-soft rounded-xl shadow-neonSoft border cyber-border bg-voronoi overflow-auto flex flex-col">
 
       <!-- Top bar -->
       <header class="px-6 py-3 border-b borderSoft flex items-center justify-between">
@@ -202,7 +330,7 @@
               </div>
               
               <h1 class="text-4xl lg:text-5xl font-bold leading-tight">
-                Transform Papers into
+                Transform Scientific Writing into
                 <span style="background: linear-gradient(135deg, #2dd4ff, #a855ff, #f973ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"> Structured Insights</span>
               </h1>
               
@@ -247,7 +375,7 @@
             </div>
             
             <div class="grid md:grid-cols-3 gap-4">
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-cyan rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(45, 212, 255, 0.2), rgba(168, 85, 255, 0.2)); border: 1px solid rgba(45, 212, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #2dd4ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -257,7 +385,7 @@
                 <p class="text-slate-400 text-sm">Design your own knowledge templates. Define exactly what information you want to pull.</p>
               </div>
 
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-purple rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(168, 85, 255, 0.2), rgba(249, 115, 255, 0.2)); border: 1px solid rgba(168, 85, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #a855ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -267,7 +395,7 @@
                 <p class="text-slate-400 text-sm">Leverage Google Gemini to intelligently reveal and structure information.</p>
               </div>
 
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-pink rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(249, 115, 255, 0.2), rgba(45, 212, 255, 0.2)); border: 1px solid rgba(249, 115, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #f973ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -277,7 +405,7 @@
                 <p class="text-slate-400 text-sm">Generate professional PDF reports with structured cards for each paper.</p>
               </div>
 
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-cyan rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(45, 212, 255, 0.2), rgba(168, 85, 255, 0.2)); border: 1px solid rgba(45, 212, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #2dd4ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
@@ -287,7 +415,7 @@
                 <p class="text-slate-400 text-sm">Export to JSONL, CSV, and PDF formats for analysis or sharing.</p>
               </div>
 
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-purple rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(168, 85, 255, 0.2), rgba(249, 115, 255, 0.2)); border: 1px solid rgba(168, 85, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #a855ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
@@ -297,7 +425,7 @@
                 <p class="text-slate-400 text-sm">Automatically generate a synthesized overview combining all papers.</p>
               </div>
 
-              <div class="glass-soft rounded-xl p-5 hover:scale-[1.02] transition-transform">
+              <div class="card-pink rounded-xl p-5 hover:scale-[1.02] transition-transform card-hover">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style="background: linear-gradient(135deg, rgba(249, 115, 255, 0.2), rgba(45, 212, 255, 0.2)); border: 1px solid rgba(249, 115, 255, 0.3);">
                   <svg class="w-5 h-5" style="color: #f973ff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
@@ -318,13 +446,13 @@
             
             <div class="space-y-6">
               <div class="flex gap-5 items-start">
-                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                  <span class="text-xl font-bold" style="background: linear-gradient(135deg, #2dd4ff, #a855ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">1</span>
+                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-accentCyan/20 border border-accentCyan/50 flex items-center justify-center shadow-lg">
+                  <span class="text-xl font-bold text-accentCyan">1</span>
                 </div>
-                <div class="flex-1 glass-soft rounded-xl p-5">
+                <div class="flex-1 card-cyan rounded-xl p-5">
                   <h3 class="font-semibold mb-2">Design Your Template</h3>
                   <p class="text-slate-400 text-sm mb-3">Ask a research question, and let AI generate a structured schema — or create your own custom template with exactly the fields you need.</p>
-                  <div class="rounded-lg p-3 font-mono text-xs bg-black/30 border border-slate-700">
+                  <div class="rounded-lg p-3 font-mono text-xs bg-black/40 border border-slate-700">
                     <span class="text-slate-500">// Example question:</span><br>
                     <span style="color: #2dd4ff;">"How does network dynamics change across biological lifeforms?"</span>
                   </div>
@@ -332,16 +460,16 @@
               </div>
 
               <div class="flex gap-5 items-start">
-                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                  <span class="text-xl font-bold" style="background: linear-gradient(135deg, #2dd4ff, #a855ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">2</span>
+                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-accentPurple/20 border border-accentPurple/50 flex items-center justify-center shadow-lg">
+                  <span class="text-xl font-bold text-accentPurple">2</span>
                 </div>
-                <div class="flex-1 glass-soft rounded-xl p-5">
+                <div class="flex-1 card-purple rounded-xl p-5">
                   <h3 class="font-semibold mb-2">Add Your Papers</h3>
                   <p class="text-slate-400 text-sm mb-3">
                     <span class="text-slate-300 font-medium">Local:</span> Place PDFs in a subfolder under <code class="px-1.5 py-0.5 rounded bg-slate-800 text-accentCyan text-xs">papers/</code><br>
                     <span class="text-slate-300 font-medium">Online:</span> Upload PDFs directly via the "Upload Papers" section in the Runs tab.
                   </p>
-                  <div class="rounded-lg p-3 font-mono text-xs bg-black/30 border border-slate-700 text-slate-400">
+                  <div class="rounded-lg p-3 font-mono text-xs bg-black/40 border border-slate-700 text-slate-400">
                     <div class="flex items-center gap-2 mb-1">
                       <span class="text-accentCyan">💻 Local:</span> papers/my_topic/*.pdf
                     </div>
@@ -353,17 +481,17 @@
               </div>
 
               <div class="flex gap-5 items-start">
-                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                  <span class="text-xl font-bold" style="background: linear-gradient(135deg, #2dd4ff, #a855ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">3</span>
+                <div class="flex-shrink-0 w-10 h-10 rounded-full bg-accentPink/20 border border-accentPink/50 flex items-center justify-center shadow-lg">
+                  <span class="text-xl font-bold text-accentPink">3</span>
                 </div>
-                <div class="flex-1 glass-soft rounded-xl p-5">
+                <div class="flex-1 card-pink rounded-xl p-5">
                   <h3 class="font-semibold mb-2">Build Your Cards</h3>
                   <p class="text-slate-400 text-sm mb-3">Click "Build Cards" and watch the magic happen. Get individual cards for each paper, plus a synthesized meta-card combining all insights.</p>
                   <div class="flex flex-wrap gap-2 mt-3">
-                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700">📄 cards.jsonl</span>
-                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700">📊 summary.csv</span>
-                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700">📑 report.pdf</span>
-                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700">🧠 meta-card.pdf</span>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800/80 border border-slate-600 shadow-sm">📄 cards.jsonl</span>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800/80 border border-slate-600 shadow-sm">📊 summary.csv</span>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800/80 border border-slate-600 shadow-sm">📑 report.pdf</span>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800/80 border border-slate-600 shadow-sm">🧠 meta-card.pdf</span>
                   </div>
                 </div>
               </div>
@@ -371,12 +499,12 @@
           </div>
 
           <!-- CTA -->
-          <div class="text-center glass-soft rounded-2xl p-8 relative overflow-hidden">
-            <div class="absolute inset-0" style="background: linear-gradient(135deg, rgba(45, 212, 255, 0.05), rgba(168, 85, 255, 0.05), rgba(249, 115, 255, 0.05));"></div>
+          <div class="text-center card-elevated rounded-2xl p-8 relative overflow-hidden">
+            <div class="absolute inset-0" style="background: linear-gradient(135deg, rgba(45, 212, 255, 0.08), rgba(168, 85, 255, 0.08), rgba(249, 115, 255, 0.08));"></div>
             <div class="relative">
               <h2 class="text-2xl font-bold mb-3">Ready to Transform Your Research?</h2>
               <p class="text-slate-400 mb-6">Start uncovering structured insights from your papers today.</p>
-              <button onclick="setView('question')" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200" style="background: linear-gradient(90deg, #2dd4ff, #a855ff, #f973ff);">
+              <button onclick="setView('question')" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200" style="background: linear-gradient(90deg, #2dd4ff, #a855ff, #f973ff);">
                 Start Building Cards
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
@@ -386,7 +514,7 @@
           </div>
 
           <!-- Footer -->
-          <div class="mt-10 pt-6 border-t border-slate-800 flex items-center justify-between text-sm text-slate-500">
+          <div class="mt-10 pt-6 border-t border-slate-700 flex items-center justify-between text-sm text-slate-500">
             <span>Built with 💜 by Antoine Bellemare</span>
             <a href="https://github.com/AntoineBellemare/knowledge-cards" target="_blank" class="hover:text-white transition-colors flex items-center gap-1">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -441,7 +569,16 @@
             </label>
           </div>
 
-          <div class="mt-7 flex items-center gap-4">
+          <div class="mt-7 flex items-center gap-4 flex-wrap">
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-slate-400">Model:</label>
+              <select id="template-model"
+                class="bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentCyan">
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fast)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (best)</option>
+              </select>
+            </div>
             <button id="btn-generate"
                 class="inline-flex items-center px-4 py-2.5 rounded-md bg-[#f8f8f4] text-slate-900 text-xs font-mono tracking-wide shadow-neon hover:brightness-95 transition-all">
                 <span class="mr-1">⚡</span>
@@ -460,12 +597,12 @@
       <!-- View: Templates -->
       <section id="view-templates" class="flex-1 overflow-auto hidden">
         <div class="max-w-5xl mx-auto py-7 px-6">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center justify-between mb-6">
             <div>
               <h1 class="text-2xl font-semibold text-slate-100 tracking-tight">
                 Template library
               </h1>
-              <p class="text-xs text-slate-400">
+              <p class="text-xs text-slate-400 mt-1">
                 Saved schemas for different questions and projects.
               </p>
             </div>
@@ -475,9 +612,10 @@
             </button>
           </div>
 
-          <div id="templates-empty" class="text-sm text-slate-400">
+          <div id="templates-empty" class="card-neutral rounded-xl p-8 text-center text-sm text-slate-400">
+            <div class="text-4xl mb-3 opacity-50">📁</div>
             No templates saved yet. Generate a template from a question, then click
-            <span class="font-mono text-accentCyan text-white">Save to library</span> in the editor.
+            <span class="font-mono text-accentCyan">Save to library</span> in the editor.
           </div>
 
           <div id="templates-list" class="space-y-3 hidden"></div>
@@ -487,7 +625,7 @@
       <!-- View: Runs -->
     <section id="view-runs" class="flex-1 overflow-auto hidden">
     <div class="max-w-3xl mx-auto py-7 px-6 space-y-5">
-        <div>
+        <div class="card-cyan rounded-xl p-5">
         <h1 class="text-2xl font-semibold text-slate-100 mb-1">
             Runs &amp; reports
         </h1>
@@ -498,9 +636,9 @@
         </div>
 
         <!-- Upload Papers Section -->
-        <div class="glass-soft rounded-lg border borderSoft p-4 space-y-4">
+        <div class="card-neutral rounded-xl p-5 space-y-4">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-slate-200 section-header-cyan flex items-center gap-2">
               <svg class="w-4 h-4 text-accentCyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
               </svg>
@@ -515,20 +653,20 @@
                 FOLDER NAME
               </label>
               <input id="upload-folder-name" type="text" placeholder="e.g., my_research_papers"
-                class="w-full bg-slate-950/70 border borderSoft rounded-md px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accentCyan" />
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30" />
             </div>
             <div>
               <label class="block text-xs font-mono text-slate-400 mb-1">
                 SELECT PDFs
               </label>
               <input id="upload-files" type="file" multiple accept=".pdf"
-                class="w-full bg-slate-950/70 border borderSoft rounded-md px-2 py-1.5 text-xs font-mono text-slate-100 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-mono file:bg-accentPurple/20 file:text-accentPurple hover:file:bg-accentPurple/30 cursor-pointer" />
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-100 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-mono file:bg-accentPurple/20 file:text-accentPurple hover:file:bg-accentPurple/30 cursor-pointer" />
             </div>
           </div>
           
           <div class="flex items-center gap-3">
             <button id="btn-upload-papers"
-              class="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-xs font-mono transition-colors flex items-center gap-2">
+              class="px-4 py-2 rounded-lg bg-accentCyan/20 hover:bg-accentCyan/30 border border-accentCyan/50 text-white text-xs font-mono transition-all flex items-center gap-2">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
               </svg>
@@ -539,15 +677,15 @@
         </div>
 
         <!-- Run Pipeline Section -->
-        <div class="glass-soft rounded-lg border borderSoft p-4 space-y-4">
+        <div class="card-purple rounded-xl p-5 space-y-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-slate-200 section-header-purple flex items-center gap-2">
             <svg class="w-4 h-4 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
             Run Pipeline
           </h2>
-          <button id="btn-refresh-folders" class="text-xs text-accentCyan hover:underline font-mono flex items-center gap-1">
+          <button id="btn-refresh-folders" class="text-xs text-accentPurple hover:text-white font-mono flex items-center gap-1 transition-colors">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -561,7 +699,7 @@
                 CARD TEMPLATE (schema)
             </label>
             <select id="run-schema"
-                class="w-full bg-slate-950/70 border borderSoft rounded-md px-2 py-2 text-xs font-mono text-slate-100">
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
                 <option value="">— select schema —</option>
             </select>
             </div>
@@ -571,8 +709,20 @@
                 PAPERS FOLDER
             </label>
             <select id="run-folder"
-                class="w-full bg-slate-950/70 border borderSoft rounded-md px-2 py-2 text-xs font-mono text-slate-100">
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
                 <option value="">— select folder —</option>
+            </select>
+            </div>
+
+            <div>
+            <label class="block text-xs font-mono text-slate-400 mb-1">
+                AI MODEL
+            </label>
+            <select id="run-model"
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fastest, cheapest)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (best quality)</option>
             </select>
             </div>
         </div>
@@ -611,15 +761,15 @@
         </div>
 
         <!-- Download Results Section -->
-        <div class="glass-soft rounded-lg border borderSoft p-4 space-y-4">
+        <div class="card-pink rounded-xl p-5 space-y-4">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-slate-200 section-header-pink flex items-center gap-2">
               <svg class="w-4 h-4 text-accentPink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
               </svg>
               Download Results
             </h2>
-            <button id="btn-refresh-results" class="text-xs text-accentCyan hover:underline font-mono flex items-center gap-1">
+            <button id="btn-refresh-results" class="text-xs text-accentPink hover:text-white font-mono flex items-center gap-1 transition-colors">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
@@ -634,6 +784,225 @@
     </div>
     </section>
 
+      <!-- View: Visualize -->
+      <section id="view-visualize" class="flex-1 overflow-auto hidden">
+        <div class="max-w-5xl mx-auto p-6 space-y-6">
+          
+          <!-- Header -->
+          <div class="card-pink rounded-xl p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, rgba(249, 115, 255, 0.3), rgba(45, 212, 255, 0.2)); border: 1px solid rgba(249, 115, 255, 0.4);">
+                <svg class="w-5 h-5 text-accentPink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h1 class="text-lg font-semibold text-slate-100">Visualize Knowledge Cards</h1>
+                <p class="text-xs text-slate-400">Generate AI-powered visual representations of your knowledge cards</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- API Key Input -->
+          <div class="card-neutral rounded-xl p-5">
+            <label class="block text-xs font-mono text-slate-400 mb-2">Google AI API Key (for image generation)</label>
+            <input id="viz-api-key" type="password" 
+              class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30"
+              placeholder="Enter your Gemini API key..." />
+            <p class="text-xs text-slate-500 mt-2">Get a key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-accentCyan hover:underline">aistudio.google.com</a></p>
+          </div>
+
+          <!-- Card Selection -->
+          <div class="card-cyan rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-slate-200 section-header-cyan">
+              <span class="text-accentCyan mr-2">1.</span> Select Card Data
+            </h2>
+            
+            <!-- Meta-Cards Section -->
+            <div class="space-y-2 p-3 rounded-lg bg-slate-900/40 border border-slate-700/50">
+              <label class="block text-xs font-mono text-slate-400 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-accentPink animate-pulse"></span>
+                Meta-Cards (Synthesis)
+              </label>
+              <select id="viz-meta-cards" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accentPink focus:ring-1 focus:ring-accentPink/30">
+                <option value="">-- Select a meta-card --</option>
+              </select>
+            </div>
+            
+            <!-- Individual Cards Section -->
+            <div class="space-y-2 p-3 rounded-lg bg-slate-900/40 border border-slate-700/50">
+              <label class="block text-xs font-mono text-slate-400 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-accentCyan"></span>
+                Individual Paper Cards
+              </label>
+              <div class="grid md:grid-cols-2 gap-3">
+                <select id="viz-individual-files" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30">
+                  <option value="">-- Select result file --</option>
+                </select>
+                <select id="viz-individual-cards" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30" disabled>
+                  <option value="">-- Select file first --</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="btn-load-card" class="px-4 py-2 rounded-lg text-sm font-medium bg-accentCyan/20 hover:bg-accentCyan/30 border border-accentCyan/50 text-slate-200 transition-all flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              Load Card Data
+            </button>
+            
+            <div id="viz-card-preview" class="hidden">
+              <div class="p-3 rounded-lg bg-slate-800/60 border border-accentCyan/30 shadow-lg">
+                <div class="flex justify-between items-start mb-2">
+                  <span id="viz-card-title" class="text-accentCyan font-medium text-sm"></span>
+                  <span id="viz-card-type-badge" class="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300"></span>
+                </div>
+                <p id="viz-card-summary" class="text-xs text-slate-400 line-clamp-3"></p>
+              </div>
+            </div>
+            
+            <!-- Category Selection Submenu -->
+            <div id="viz-categories-panel" class="hidden mt-4 p-4 rounded-lg bg-slate-900/60 border border-accentPurple/30">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                  </svg>
+                  Select Categories to Include
+                </h3>
+                <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-200">
+                  <input type="checkbox" id="viz-select-all-categories" checked class="w-3.5 h-3.5 rounded border-slate-500 bg-slate-800 text-accentPurple focus:ring-accentPurple/50" />
+                  Select All
+                </label>
+              </div>
+              <div id="viz-categories-list" class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                <!-- Categories will be populated dynamically -->
+              </div>
+              <p class="text-xs text-slate-500 mt-3 italic">Uncheck categories to focus the visualization on specific aspects</p>
+            </div>
+          </div>
+
+          <!-- Visualization Mode -->
+          <div class="card-purple rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-slate-200 section-header-purple">
+              <span class="text-accentPurple mr-2">2.</span> Choose Visualization Style
+            </h2>
+            
+            <div class="grid md:grid-cols-2 gap-3" id="viz-mode-grid">
+              <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-selected-cyan transition-all hover:scale-[1.02] shadow-lg card-hover" data-value="schematic">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xl">📐</span>
+                  <span class="font-medium text-sm text-slate-200">Precise Schematic</span>
+                </div>
+                <p class="text-xs text-slate-400">Technical diagram showing key concepts, relationships, and hierarchies with clean geometric forms.</p>
+              </div>
+              
+              <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="intuitive">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xl">🎨</span>
+                  <span class="font-medium text-sm text-slate-200">Intuitive Display</span>
+                </div>
+                <p class="text-xs text-slate-400">Artistic, metaphorical visualization that captures the essence and feeling of the research themes.</p>
+              </div>
+              
+              <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="network">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xl">🕸️</span>
+                  <span class="font-medium text-sm text-slate-200">Network Graph</span>
+                </div>
+                <p class="text-xs text-slate-400">Node-link diagram emphasizing connections between concepts, systems, and findings.</p>
+              </div>
+              
+              <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="infographic">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xl">📊</span>
+                  <span class="font-medium text-sm text-slate-200">Data Infographic</span>
+                </div>
+                <p class="text-xs text-slate-400">Information-rich poster with stats, key findings, and organized data blocks.</p>
+              </div>
+            </div>
+            <input type="hidden" id="viz-mode-value" value="schematic" />
+          </div>
+
+          <!-- Model Selection -->
+          <div class="card-neutral rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-slate-200 section-header-cyan">
+              <span class="text-accentCyan mr-2">3.</span> Select Image Model
+            </h2>
+            
+            <div class="grid md:grid-cols-2 gap-3" id="viz-model-grid">
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-selected-cyan transition-all hover:scale-[1.02] shadow-md card-hover" data-value="gemini-2.5-flash-image">
+                <div class="font-medium text-sm text-slate-200">Gemini 2.5 Flash</div>
+                <p class="text-xs text-slate-500">Fast image generation</p>
+              </div>
+              
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="imagen-4.0-generate-001">
+                <div class="font-medium text-sm text-slate-200">Imagen 4</div>
+                <p class="text-xs text-slate-500">High-quality image generation</p>
+              </div>
+              
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="gemini-3-pro-image-preview">
+                <div class="font-medium text-sm text-slate-200">Gemini 3 Pro</div>
+                <p class="text-xs text-slate-500">Higher quality, slower</p>
+              </div>
+              
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="nano-banana-pro-preview">
+                <div class="font-medium text-sm text-slate-200">🍌 Nano Banana</div>
+                <p class="text-xs text-slate-500">Experimental model</p>
+              </div>
+            </div>
+            <input type="hidden" id="viz-model-value" value="gemini-2.5-flash-image" />
+          </div>
+
+          <!-- Generate Button -->
+          <div class="card-elevated rounded-xl p-5 space-y-4">
+            <button id="btn-generate-viz" class="w-full px-6 py-3 rounded-xl font-semibold text-white shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 flex items-center justify-center gap-2" style="background: linear-gradient(90deg, #2dd4ff, #a855ff, #f973ff);">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+              Generate Visualization
+            </button>
+            
+            <div id="viz-status" class="text-center text-xs font-mono text-slate-400"></div>
+          </div>
+
+          <!-- Result Display -->
+          <div id="viz-result-container" class="hidden card-elevated rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              Generated Visualization
+            </h2>
+            
+            <div class="flex justify-center">
+              <img id="viz-result-image" class="max-w-full rounded-lg shadow-2xl border border-slate-600" alt="Generated visualization" />
+            </div>
+            
+            <div class="flex justify-center gap-3">
+              <button id="btn-download-viz" class="px-4 py-2 rounded-lg text-sm font-medium bg-green-600/20 hover:bg-green-600/30 border border-green-500/50 text-green-300 transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Download Image
+              </button>
+              <button id="btn-regenerate-viz" class="px-4 py-2 rounded-lg text-sm font-medium bg-accentPurple/20 hover:bg-accentPurple/30 text-accentPurple transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Regenerate
+              </button>
+            </div>
+            
+            <details class="mt-4">
+              <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300">View generated prompt</summary>
+              <pre id="viz-prompt-display" class="mt-2 p-3 rounded bg-slate-900/50 text-xs text-slate-400 overflow-x-auto whitespace-pre-wrap"></pre>
+            </details>
+          </div>
+
+        </div>
+      </section>
 
       <!-- View: Editor -->
       <section id="view-editor" class="flex-1 flex flex-col hidden">
@@ -652,6 +1021,13 @@
                 class="rounded border-slate-500 bg-slate-900/60" />
               <span>Full JSON</span>
             </label>
+            <button id="btn-add-category"
+              class="px-3 py-1.5 rounded-md border border-slate-600 text-slate-300 hover:bg-slate-800 text-xs flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Category
+            </button>
             <button id="btn-save-template"
               class="px-3 py-1.5 rounded-md bg-gradient-to-r from-accentPurple to-accentCyan text-slate-50 hover:brightness-110 shadow-neon text-xs">
               Save to library
@@ -676,6 +1052,30 @@
         </div>
       </section>
 
+      <!-- Category Edit Modal -->
+      <div id="category-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+          <div class="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
+            <div>
+              <h3 id="modal-category-title" class="text-sm font-semibold text-slate-100">Edit Category</h3>
+              <p class="text-xs text-slate-400 mt-0.5">Modify fields and structure</p>
+            </div>
+            <button id="modal-close" class="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div id="modal-content" class="p-5 overflow-y-auto max-h-[60vh]">
+            <!-- Dynamic content -->
+          </div>
+          <div class="px-5 py-4 border-t border-slate-700 flex justify-end gap-3">
+            <button id="modal-cancel" class="px-4 py-2 text-xs text-slate-400 hover:text-slate-200">Cancel</button>
+            <button id="modal-save" class="px-4 py-2 rounded-lg bg-accentCyan text-slate-900 text-xs font-medium hover:brightness-110">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -691,7 +1091,7 @@
     // Auto-detect API base URL: use localhost for local dev (including file://), or production URL
     const isLocal = !window.location.hostname || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
     const API_BASE = isLocal
-      ? "http://localhost:8000"
+      ? "http://127.0.0.1:8000"
       : "https://knowledge-cards-production.up.railway.app";
     
     console.log("[DEBUG] hostname:", window.location.hostname, "| isLocal:", isLocal, "| API_BASE:", API_BASE);
@@ -738,7 +1138,7 @@
 
     function setView(view) {
       currentView = view;
-      ["view-welcome", "view-question", "view-templates", "view-runs", "view-editor"].forEach(
+      ["view-welcome", "view-question", "view-templates", "view-runs", "view-visualize", "view-editor"].forEach(
         (vid) => {
           $(vid).classList.toggle("hidden", vid !== "view-" + view);
         }
@@ -749,6 +1149,7 @@
         question: "nav-question",
         templates: "nav-templates",
         runs: "nav-runs",
+        visualize: "nav-visualize",
         editor: "nav-editor",
       };
 
@@ -788,8 +1189,8 @@
 
     // ---------- Backend helpers ----------
 
-    async function apiGenerateSchemaFromQuestion(question, pointers) {
-      console.log("[api] generate schema for question:", question, pointers);
+    async function apiGenerateSchemaFromQuestion(question, pointers, model) {
+      console.log("[api] generate schema for question:", question, pointers, "model:", model);
 
       const response = await fetch(`${API_BASE}/schema_from_question`, {
         method: "POST",
@@ -799,6 +1200,7 @@
         },
         body: JSON.stringify({
           question,
+          model: model || "gemini-2.5-flash-lite",
           pointers: {
             emphasize_conceptual: !!pointers.conceptual,
             include_empirical_methods: !!pointers.empirical,
@@ -882,8 +1284,8 @@
     }
 
     // SSE-based streaming API for real-time progress using fetch (works cross-origin)
-    async function apiRunGeminiWithProgress(schemaName, papersSubdir, onProgress) {
-      const url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaName)}&papers_subdir=${encodeURIComponent(papersSubdir)}`;
+    async function apiRunGeminiWithProgress(schemaName, papersSubdir, model, onProgress) {
+      const url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaName)}&papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -990,9 +1392,11 @@
         metapoetic: $("opt-metapoetic").checked,
         ethics: $("opt-ethics").checked,
       };
+      
+      const model = $("template-model").value || "gemini-2.5-flash-lite";
 
       try {
-        const schema = await apiGenerateSchemaFromQuestion(q, options);
+        const schema = await apiGenerateSchemaFromQuestion(q, options, model);
         schemaJSON = schema;
         sectionExpanded = {};
         showFullJSON = false;
@@ -1179,79 +1583,129 @@
 
       topKeys.forEach((key) => {
         const value = schemaJSON[key];
-        const isObject =
-          value && typeof value === "object" && !Array.isArray(value);
+        const isObject = value && typeof value === "object" && !Array.isArray(value);
+        const isArray = Array.isArray(value);
 
         if (!sectionExpanded.hasOwnProperty(key)) {
           sectionExpanded[key] = true;
         }
 
         const card = document.createElement("div");
-        card.className =
-          "glass-soft border borderSoft rounded-lg flex flex-col";
+        card.className = "category-card glass-soft border borderSoft rounded-xl flex flex-col overflow-hidden transition-all hover:border-slate-600";
+        card.dataset.key = key;
 
-        const header = document.createElement("button");
-        header.type = "button";
-        header.className =
-          "px-3 py-2.5 border-b borderSoft flex items-center justify-between text-xs font-mono text-slate-200";
+        // Header with controls
+        const header = document.createElement("div");
+        header.className = "px-4 py-3 bg-gradient-to-r from-slate-800/50 to-slate-900/50 flex items-center justify-between";
 
-        const label = key.replace(/_/g, " ");
+        const leftSide = document.createElement("div");
+        leftSide.className = "flex items-center gap-3";
+
+        // Category icon
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "text-lg";
+        iconSpan.textContent = getCategoryIcon(key);
+        leftSide.appendChild(iconSpan);
+
+        // Category name (editable on double-click)
+        const nameContainer = document.createElement("div");
         const labelSpan = document.createElement("span");
-        labelSpan.textContent = label;
-        header.appendChild(labelSpan);
+        labelSpan.className = "text-sm font-medium text-slate-100 cursor-pointer hover:text-accentCyan transition-colors";
+        labelSpan.textContent = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        labelSpan.title = "Double-click to rename";
+        labelSpan.ondblclick = () => renameCategoryPrompt(key);
+        nameContainer.appendChild(labelSpan);
+        
+        // Field count badge
+        const fieldCount = isObject ? Object.keys(value).length : (isArray ? value.length : 1);
+        const countBadge = document.createElement("span");
+        countBadge.className = "ml-2 text-[0.6rem] px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-400";
+        countBadge.textContent = `${fieldCount} ${isObject ? 'fields' : (isArray ? 'items' : 'value')}`;
+        nameContainer.appendChild(countBadge);
+        
+        leftSide.appendChild(nameContainer);
+        header.appendChild(leftSide);
 
-        const toggleSpan = document.createElement("span");
-        toggleSpan.className = "text-[0.65rem] text-slate-400";
-        toggleSpan.textContent = sectionExpanded[key] ? "Hide" : "Show";
-        header.appendChild(toggleSpan);
+        // Action buttons
+        const actions = document.createElement("div");
+        actions.className = "flex items-center gap-1";
 
-        header.onclick = () => {
+        // Edit button
+        const editBtn = document.createElement("button");
+        editBtn.className = "p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-accentCyan transition-colors";
+        editBtn.title = "Edit category";
+        editBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`;
+        editBtn.onclick = () => openCategoryModal(key, value);
+        actions.appendChild(editBtn);
+
+        // Toggle expand button
+        const toggleBtn = document.createElement("button");
+        toggleBtn.className = "p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors";
+        toggleBtn.innerHTML = sectionExpanded[key] 
+          ? `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>`
+          : `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>`;
+        toggleBtn.onclick = () => {
           sectionExpanded[key] = !sectionExpanded[key];
           renderEditorView();
         };
+        actions.appendChild(toggleBtn);
 
+        // Delete button
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "p-1.5 rounded-lg hover:bg-red-900/30 text-slate-400 hover:text-red-400 transition-colors";
+        deleteBtn.title = "Remove category";
+        deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+        deleteBtn.onclick = () => deleteCategoryConfirm(key);
+        actions.appendChild(deleteBtn);
+
+        header.appendChild(actions);
         card.appendChild(header);
 
+        // Body - visual preview of fields
         if (sectionExpanded[key]) {
           const body = document.createElement("div");
-          body.className =
-            "p-3 max-h-[400px] overflow-y-auto overflow-x-hidden rounded-b-lg";
+          body.className = "px-4 py-3 space-y-2";
 
           if (isObject) {
+            // Show fields as tags/chips
+            const fieldsContainer = document.createElement("div");
+            fieldsContainer.className = "flex flex-wrap gap-2";
+
+            Object.entries(value).forEach(([fieldKey, fieldVal]) => {
+              const chip = document.createElement("div");
+              chip.className = "field-chip group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/70 border border-slate-700 hover:border-slate-500 transition-all cursor-pointer";
+              chip.onclick = () => openCategoryModal(key, value, fieldKey);
+
+              const fieldIcon = document.createElement("span");
+              fieldIcon.className = "text-xs";
+              fieldIcon.textContent = getFieldIcon(fieldVal);
+              chip.appendChild(fieldIcon);
+
+              const fieldName = document.createElement("span");
+              fieldName.className = "text-xs text-slate-300 group-hover:text-slate-100";
+              fieldName.textContent = fieldKey.replace(/_/g, " ");
+              chip.appendChild(fieldName);
+
+              // Type indicator
+              const typeIndicator = document.createElement("span");
+              typeIndicator.className = "text-[0.6rem] text-slate-500 ml-1";
+              typeIndicator.textContent = getFieldTypeLabel(fieldVal);
+              chip.appendChild(typeIndicator);
+
+              fieldsContainer.appendChild(chip);
+            });
+
+            body.appendChild(fieldsContainer);
+          } else if (isArray) {
             const info = document.createElement("div");
-            info.className =
-              "text-[0.65rem] font-mono text-slate-400 mb-1";
-            info.textContent = "Edit JSON for this section:";
+            info.className = "text-xs text-slate-400 flex items-center gap-2";
+            info.innerHTML = `<span class="text-slate-500">Array with ${value.length} items</span>
+              <button class="text-accentCyan hover:underline" onclick="openCategoryModal('${key}', schemaJSON['${key}'])">Edit items</button>`;
             body.appendChild(info);
-
-            const textarea = document.createElement("textarea");
-            textarea.className =
-              "w-full text-[0.7rem] font-mono border borderSoft rounded-md px-2 py-1 bg-slate-950 text-slate-100 min-h-[150px] focus:outline-none focus:ring-1 focus:ring-accentCyan";
-            textarea.value = JSON.stringify(value, null, 2);
-
-            textarea.onblur = () => {
-              try {
-                const parsed = JSON.parse(textarea.value);
-                schemaJSON[key] = parsed;
-                $("full-json").textContent = JSON.stringify(
-                  schemaJSON,
-                  null,
-                  2
-                );
-              } catch (err) {
-                console.warn("Invalid JSON for section", key, err);
-                alert("Invalid JSON in section: " + key);
-              }
-            };
-
-            body.appendChild(textarea);
           } else {
             const info = document.createElement("div");
-            info.className = "text-[0.7rem] text-slate-300";
-            info.textContent =
-              "Non-object value (type: " +
-              typeof value +
-              "). Edit via full JSON view.";
+            info.className = "text-xs text-slate-400";
+            info.textContent = `Value: ${typeof value === 'string' ? `"${value}"` : value}`;
             body.appendChild(info);
           }
 
@@ -1267,6 +1721,316 @@
       } else {
         $("full-json-container").classList.add("hidden");
       }
+    }
+
+    // Helper functions for the visual editor
+    function getCategoryIcon(key) {
+      const icons = {
+        metadata: '📋', citation: '📋',
+        orientation_and_scope: '🎯', core_focus: '🎯',
+        findings: '🔬', findings_and_comparisons: '🔬',
+        network_dynamics_facets: '🕸️', biological_systems_analyzed: '🌿',
+        limitations: '⚠️', limitations_and_future_directions: '⚠️', limits: '⚠️',
+        methods: '🔧', methods_and_metrics: '📏',
+        theoretical_frameworks: '📐', theory: '📐',
+        relational_analysis: '🔗', phenomenology_definition: '🧘',
+        feedback_mechanisms_definition: '🔄', core_thesis: '💡'
+      };
+      return icons[key] || '📦';
+    }
+
+    function getFieldIcon(val) {
+      if (Array.isArray(val)) return '📚';
+      if (typeof val === 'object' && val !== null) return '🗂️';
+      if (typeof val === 'string') return '📝';
+      if (typeof val === 'number') return '🔢';
+      if (typeof val === 'boolean') return '✓';
+      return '•';
+    }
+
+    function getFieldTypeLabel(val) {
+      if (Array.isArray(val)) return `[${val.length}]`;
+      if (typeof val === 'object' && val !== null) return `{${Object.keys(val).length}}`;
+      if (typeof val === 'string' && val === '') return 'empty';
+      return '';
+    }
+
+    function renameCategoryPrompt(oldKey) {
+      const newKey = prompt('Enter new category name (use underscores for spaces):', oldKey);
+      if (newKey && newKey !== oldKey && !schemaJSON.hasOwnProperty(newKey)) {
+        const value = schemaJSON[oldKey];
+        delete schemaJSON[oldKey];
+        schemaJSON[newKey] = value;
+        renderEditorView();
+      }
+    }
+
+    function deleteCategoryConfirm(key) {
+      if (confirm(`Delete category "${key.replace(/_/g, ' ')}"? This cannot be undone.`)) {
+        delete schemaJSON[key];
+        delete sectionExpanded[key];
+        renderEditorView();
+      }
+    }
+
+    let currentEditingCategory = null;
+    let currentEditingData = null;
+
+    function openCategoryModal(key, value, focusField = null) {
+      currentEditingCategory = key;
+      currentEditingData = JSON.parse(JSON.stringify(value)); // Deep clone
+      
+      const modal = $("category-edit-modal");
+      const title = $("modal-category-title");
+      const content = $("modal-content");
+      
+      title.textContent = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      content.innerHTML = '';
+      
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        // Render editable fields
+        Object.entries(value).forEach(([fieldKey, fieldVal]) => {
+          const fieldContainer = document.createElement("div");
+          fieldContainer.className = "field-editor mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700";
+          fieldContainer.dataset.fieldKey = fieldKey;
+          
+          // Field header
+          const fieldHeader = document.createElement("div");
+          fieldHeader.className = "flex items-center justify-between mb-2";
+          
+          const fieldLabel = document.createElement("span");
+          fieldLabel.className = "text-xs font-medium text-slate-200";
+          fieldLabel.textContent = fieldKey.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+          fieldHeader.appendChild(fieldLabel);
+          
+          const deleteFieldBtn = document.createElement("button");
+          deleteFieldBtn.className = "text-xs text-red-400 hover:text-red-300";
+          deleteFieldBtn.textContent = "Remove";
+          deleteFieldBtn.onclick = () => {
+            delete currentEditingData[fieldKey];
+            fieldContainer.remove();
+          };
+          fieldHeader.appendChild(deleteFieldBtn);
+          
+          fieldContainer.appendChild(fieldHeader);
+          
+          // Field value editor
+          const fieldEditor = createFieldEditor(fieldKey, fieldVal);
+          fieldContainer.appendChild(fieldEditor);
+          
+          content.appendChild(fieldContainer);
+        });
+        
+        // Add new field button
+        const addFieldBtn = document.createElement("button");
+        addFieldBtn.className = "w-full py-2 mt-2 border-2 border-dashed border-slate-600 rounded-lg text-xs text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors";
+        addFieldBtn.textContent = "+ Add new field";
+        addFieldBtn.onclick = () => addNewFieldToModal(content);
+        content.appendChild(addFieldBtn);
+        
+      } else if (Array.isArray(value)) {
+        // Array editor
+        const arrayInfo = document.createElement("div");
+        arrayInfo.className = "text-xs text-slate-400 mb-3";
+        arrayInfo.textContent = `Array with ${value.length} items. Edit the JSON below:`;
+        content.appendChild(arrayInfo);
+        
+        const textarea = document.createElement("textarea");
+        textarea.id = "modal-array-editor";
+        textarea.className = "w-full text-xs font-mono border border-slate-600 rounded-lg px-3 py-2 bg-slate-950 text-slate-100 min-h-[200px] focus:outline-none focus:ring-1 focus:ring-accentCyan";
+        textarea.value = JSON.stringify(value, null, 2);
+        content.appendChild(textarea);
+      } else {
+        // Simple value
+        const input = document.createElement("input");
+        input.id = "modal-simple-editor";
+        input.type = "text";
+        input.className = "w-full text-xs border border-slate-600 rounded-lg px-3 py-2 bg-slate-950 text-slate-100 focus:outline-none focus:ring-1 focus:ring-accentCyan";
+        input.value = value;
+        content.appendChild(input);
+      }
+      
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function createFieldEditor(fieldKey, fieldVal) {
+      const wrapper = document.createElement("div");
+      
+      if (Array.isArray(fieldVal)) {
+        // Array field - show as tag input
+        const tagContainer = document.createElement("div");
+        tagContainer.className = "flex flex-wrap gap-1.5 p-2 rounded bg-slate-900/50 min-h-[40px]";
+        tagContainer.id = `field-${fieldKey}`;
+        
+        fieldVal.forEach((item, idx) => {
+          const tag = document.createElement("span");
+          tag.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-700 text-xs text-slate-200";
+          tag.textContent = typeof item === 'string' ? item : (item.description || item.name || JSON.stringify(item).substring(0, 30));
+          
+          const removeTag = document.createElement("button");
+          removeTag.className = "text-slate-400 hover:text-red-400 ml-1";
+          removeTag.innerHTML = "×";
+          removeTag.onclick = () => {
+            currentEditingData[fieldKey].splice(idx, 1);
+            tag.remove();
+          };
+          tag.appendChild(removeTag);
+          tagContainer.appendChild(tag);
+        });
+        
+        const addInput = document.createElement("input");
+        addInput.type = "text";
+        addInput.placeholder = "Add item...";
+        addInput.className = "flex-1 min-w-[100px] bg-transparent text-xs text-slate-300 outline-none";
+        addInput.onkeydown = (e) => {
+          if (e.key === 'Enter' && addInput.value.trim()) {
+            currentEditingData[fieldKey].push(addInput.value.trim());
+            const tag = document.createElement("span");
+            tag.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-700 text-xs text-slate-200";
+            tag.textContent = addInput.value.trim();
+            const removeTag = document.createElement("button");
+            removeTag.className = "text-slate-400 hover:text-red-400 ml-1";
+            removeTag.innerHTML = "×";
+            removeTag.onclick = () => {
+              const idx = currentEditingData[fieldKey].indexOf(addInput.value.trim());
+              if (idx > -1) currentEditingData[fieldKey].splice(idx, 1);
+              tag.remove();
+            };
+            tag.appendChild(removeTag);
+            tagContainer.insertBefore(tag, addInput);
+            addInput.value = '';
+          }
+        };
+        tagContainer.appendChild(addInput);
+        wrapper.appendChild(tagContainer);
+        
+      } else if (typeof fieldVal === 'object' && fieldVal !== null) {
+        // Nested object - show as mini JSON editor
+        const textarea = document.createElement("textarea");
+        textarea.className = "w-full text-[0.65rem] font-mono border border-slate-600 rounded px-2 py-1.5 bg-slate-950 text-slate-100 min-h-[80px] focus:outline-none focus:ring-1 focus:ring-accentCyan";
+        textarea.value = JSON.stringify(fieldVal, null, 2);
+        textarea.onblur = () => {
+          try {
+            currentEditingData[fieldKey] = JSON.parse(textarea.value);
+          } catch (e) {
+            // Invalid JSON, revert
+            textarea.value = JSON.stringify(currentEditingData[fieldKey], null, 2);
+          }
+        };
+        wrapper.appendChild(textarea);
+        
+      } else {
+        // Simple value - input field
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "w-full text-xs border border-slate-600 rounded px-2 py-1.5 bg-slate-950 text-slate-100 focus:outline-none focus:ring-1 focus:ring-accentCyan";
+        input.value = fieldVal || '';
+        input.onchange = () => {
+          currentEditingData[fieldKey] = input.value;
+        };
+        wrapper.appendChild(input);
+      }
+      
+      return wrapper;
+    }
+
+    function addNewFieldToModal(content) {
+      const fieldName = prompt('Enter field name (use underscores for spaces):');
+      if (!fieldName) return;
+      
+      const fieldType = prompt('Field type: "string", "array", or "object"', 'string');
+      let defaultValue;
+      switch (fieldType) {
+        case 'array': defaultValue = []; break;
+        case 'object': defaultValue = {}; break;
+        default: defaultValue = '';
+      }
+      
+      currentEditingData[fieldName] = defaultValue;
+      
+      // Insert before the add button
+      const addBtn = content.querySelector('button:last-child');
+      const fieldContainer = document.createElement("div");
+      fieldContainer.className = "field-editor mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700";
+      fieldContainer.dataset.fieldKey = fieldName;
+      
+      const fieldHeader = document.createElement("div");
+      fieldHeader.className = "flex items-center justify-between mb-2";
+      
+      const fieldLabel = document.createElement("span");
+      fieldLabel.className = "text-xs font-medium text-slate-200";
+      fieldLabel.textContent = fieldName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      fieldHeader.appendChild(fieldLabel);
+      
+      const deleteFieldBtn = document.createElement("button");
+      deleteFieldBtn.className = "text-xs text-red-400 hover:text-red-300";
+      deleteFieldBtn.textContent = "Remove";
+      deleteFieldBtn.onclick = () => {
+        delete currentEditingData[fieldName];
+        fieldContainer.remove();
+      };
+      fieldHeader.appendChild(deleteFieldBtn);
+      
+      fieldContainer.appendChild(fieldHeader);
+      fieldContainer.appendChild(createFieldEditor(fieldName, defaultValue));
+      
+      content.insertBefore(fieldContainer, addBtn);
+    }
+
+    function closeCategoryModal() {
+      const modal = $("category-edit-modal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+      currentEditingCategory = null;
+      currentEditingData = null;
+    }
+
+    function saveCategoryModal() {
+      if (!currentEditingCategory) return;
+      
+      // Check for array editor
+      const arrayEditor = $("modal-array-editor");
+      if (arrayEditor) {
+        try {
+          currentEditingData = JSON.parse(arrayEditor.value);
+        } catch (e) {
+          alert("Invalid JSON in array editor");
+          return;
+        }
+      }
+      
+      // Check for simple editor
+      const simpleEditor = $("modal-simple-editor");
+      if (simpleEditor) {
+        currentEditingData = simpleEditor.value;
+      }
+      
+      schemaJSON[currentEditingCategory] = currentEditingData;
+      closeCategoryModal();
+      renderEditorView();
+    }
+
+    function addNewCategory() {
+      const name = prompt('Enter category name (use underscores for spaces):');
+      if (!name) return;
+      
+      if (schemaJSON.hasOwnProperty(name)) {
+        alert('Category already exists');
+        return;
+      }
+      
+      // Create with default structure
+      schemaJSON[name] = {
+        description: "",
+        key_points: []
+      };
+      
+      sectionExpanded[name] = true;
+      renderEditorView();
+      
+      // Open modal to edit immediately
+      openCategoryModal(name, schemaJSON[name]);
     }
 
     // ----- Runs & reports -----
@@ -1312,6 +2076,7 @@
     async function handleRunGemini() {
         const schemaName = $("run-schema").value;
         const folder = $("run-folder").value;
+        const model = $("run-model").value || "gemini-2.5-flash-lite";
         const statusEl = $("run-status");
         const outEl = $("run-output");
         const btnText = $("btn-text");
@@ -1379,7 +2144,7 @@
         }
 
         try {
-            const res = await apiRunGeminiWithProgress(schemaName, folder, handleProgress);
+            const res = await apiRunGeminiWithProgress(schemaName, folder, model, handleProgress);
             
             // Complete progress
             progressBar.style.width = "100%";
@@ -1446,6 +2211,10 @@
         setView("runs");
         refreshRunOptions();
       };
+      $("nav-visualize").onclick = () => {
+        setView("visualize");
+        loadVizResultFiles();
+      };
       $("nav-editor").onclick = () => setView("editor");
 
       $("btn-generate").onclick = handleGenerateTemplate;
@@ -1453,6 +2222,7 @@
       $("btn-open-current-from-library").onclick = () => setView("editor");
 
       $("btn-save-template").onclick = saveCurrentTemplate;
+      $("btn-add-category").onclick = addNewCategory;
       $("template-name").addEventListener("change", (e) => {
         if (currentTemplate) {
           currentTemplate.name = e.target.value;
@@ -1463,10 +2233,72 @@
         renderEditorView();
       });
 
+      // Modal handlers
+      $("modal-close").onclick = closeCategoryModal;
+      $("modal-cancel").onclick = closeCategoryModal;
+      $("modal-save").onclick = saveCategoryModal;
+      $("category-edit-modal").onclick = (e) => {
+        if (e.target.id === "category-edit-modal") closeCategoryModal();
+      };
+
       $("btn-run-gemini").onclick = handleRunGemini;
       $("btn-refresh-folders").onclick = refreshRunOptions;
       $("btn-upload-papers").onclick = handleUploadPapers;
       $("btn-refresh-results").onclick = refreshResultsList;
+
+      // Visualization handlers
+      $("btn-load-card").onclick = loadCardForVisualization;
+      $("btn-generate-viz").onclick = generateVisualization;
+      $("btn-regenerate-viz").onclick = generateVisualization;
+      $("btn-download-viz").onclick = downloadVisualization;
+      
+      // Meta-card selection clears individual selection
+      $("viz-meta-cards").onchange = () => {
+        if ($("viz-meta-cards").value) {
+          $("viz-individual-files").value = "";
+          $("viz-individual-cards").innerHTML = '<option value="">-- Select file first --</option>';
+          $("viz-individual-cards").disabled = true;
+        }
+      };
+      
+      // Individual file selection clears meta-card and loads cards
+      $("viz-individual-files").onchange = async () => {
+        if ($("viz-individual-files").value) {
+          $("viz-meta-cards").value = "";
+          await loadIndividualCards();
+        } else {
+          $("viz-individual-cards").innerHTML = '<option value="">-- Select file first --</option>';
+          $("viz-individual-cards").disabled = true;
+        }
+      };
+
+      // Setup viz mode selection
+      document.querySelectorAll('.viz-mode-option').forEach(opt => {
+        opt.onclick = () => {
+          document.querySelectorAll('.viz-mode-option').forEach(o => {
+            o.classList.remove('viz-selected-cyan', 'viz-selected-purple', 'viz-selected-pink', 'viz-selected-green');
+            o.classList.add('viz-unselected');
+          });
+          const colors = { schematic: 'cyan', intuitive: 'purple', network: 'pink', infographic: 'green' };
+          const color = colors[opt.dataset.value] || 'cyan';
+          opt.classList.remove('viz-unselected');
+          opt.classList.add(`viz-selected-${color}`);
+          $("viz-mode-value").value = opt.dataset.value;
+        };
+      });
+
+      // Setup viz model selection
+      document.querySelectorAll('.viz-model-option').forEach(opt => {
+        opt.onclick = () => {
+          document.querySelectorAll('.viz-model-option').forEach(o => {
+            o.classList.remove('viz-selected-cyan');
+            o.classList.add('viz-unselected');
+          });
+          opt.classList.remove('viz-unselected');
+          opt.classList.add('viz-selected-cyan');
+          $("viz-model-value").value = opt.dataset.value;
+        };
+      });
 
       // Show session ID in sidebar
       $("session-indicator").textContent = isLocal ? "local mode" : `session: ${SESSION_ID}`;
@@ -1588,6 +2420,690 @@
         console.error("Failed to load results:", err);
         container.innerHTML = `<span class="text-red-400">Error loading results: ${err.message}</span>`;
       }
+    }
+
+    // ========== VISUALIZATION FUNCTIONS ==========
+    let loadedCardData = null;
+    let generatedImageData = null;
+    let generatedPrompt = "";
+
+    async function loadVizResultFiles() {
+      const metaSelect = $("viz-meta-cards");
+      const individualSelect = $("viz-individual-files");
+      
+      metaSelect.innerHTML = '<option value="">Loading...</option>';
+      individualSelect.innerHTML = '<option value="">Loading...</option>';
+      
+      try {
+        const data = await apiListResults();
+        let results = data.results || [];
+        
+        // Filter to JSON/JSONL files only
+        results = results.filter(f => f.name.endsWith('.json') || f.name.endsWith('.jsonl'));
+        
+        // Filter by session if online
+        if (!isLocal) {
+          results = results.filter(f => f.name.includes(SESSION_ID + '_'));
+        }
+        
+        // Separate meta-cards (contain 'meta' in name and are .json/.jsonl) from individual cards
+        const metaCards = results.filter(f => f.name.toLowerCase().includes('meta'));
+        const individualFiles = results.filter(f => !f.name.toLowerCase().includes('meta') && f.name.endsWith('.jsonl'));
+        
+        // Populate meta-cards dropdown
+        metaSelect.innerHTML = '<option value="">-- Select a meta-card --</option>';
+        metaCards.forEach(f => {
+          const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
+          const opt = document.createElement('option');
+          opt.value = f.name;
+          opt.textContent = displayName.replace(/_/g, ' ').replace('.json', '').replace('.jsonl', '');
+          metaSelect.appendChild(opt);
+        });
+        
+        // Populate individual files dropdown
+        individualSelect.innerHTML = '<option value="">-- Select result file --</option>';
+        individualFiles.forEach(f => {
+          const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
+          const opt = document.createElement('option');
+          opt.value = f.name;
+          opt.textContent = displayName.replace(/_/g, ' ').replace('.jsonl', '');
+          individualSelect.appendChild(opt);
+        });
+        
+        if (metaCards.length === 0) {
+          metaSelect.innerHTML = '<option value="">No meta-cards found</option>';
+        }
+        if (individualFiles.length === 0) {
+          individualSelect.innerHTML = '<option value="">No result files found</option>';
+        }
+      } catch (err) {
+        console.error("Failed to load result files:", err);
+        metaSelect.innerHTML = '<option value="">Error loading files</option>';
+        individualSelect.innerHTML = '<option value="">Error loading files</option>';
+      }
+    }
+
+    async function loadIndividualCards() {
+      const filename = $("viz-individual-files").value;
+      const cardSelector = $("viz-individual-cards");
+      
+      if (!filename) {
+        cardSelector.innerHTML = '<option value="">-- Select file first --</option>';
+        cardSelector.disabled = true;
+        return;
+      }
+      
+      cardSelector.innerHTML = '<option value="">Loading cards...</option>';
+      cardSelector.disabled = true;
+      
+      try {
+        const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
+        const text = await response.text();
+        
+        // Parse JSONL - each line is a separate card
+        const cards = text.trim().split('\n').map((line, i) => {
+          try {
+            const card = JSON.parse(line);
+            const title = card.schema?.metadata?.title || card.metadata?.title || `Card ${i + 1}`;
+            return { index: i, card, title };
+          } catch { return null; }
+        }).filter(Boolean);
+        
+        // Populate card selector
+        cardSelector.innerHTML = '';
+        cards.forEach(({ index, title }) => {
+          const opt = document.createElement('option');
+          opt.value = index;
+          opt.textContent = title.length > 50 ? title.slice(0, 50) + '...' : title;
+          cardSelector.appendChild(opt);
+        });
+        
+        // Store cards data
+        cardSelector.dataset.cards = JSON.stringify(cards);
+        cardSelector.disabled = false;
+      } catch (err) {
+        console.error("Failed to load cards:", err);
+        cardSelector.innerHTML = '<option value="">Error loading cards</option>';
+      }
+    }
+
+    async function loadCardsFromResultFile() {
+      // Deprecated - kept for compatibility
+      await loadIndividualCards();
+    }
+
+    async function loadCardForVisualization() {
+      const metaFile = $("viz-meta-cards").value;
+      const individualFile = $("viz-individual-files").value;
+      const preview = $("viz-card-preview");
+      const categoriesPanel = $("viz-categories-panel");
+      const categoriesList = $("viz-categories-list");
+      
+      let filename = metaFile || individualFile;
+      let isMeta = !!metaFile;
+      
+      if (!filename) {
+        alert("Please select a meta-card or an individual card first");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
+        const text = await response.text();
+        
+        let card;
+        if (isMeta) {
+          // Load meta-card (could be JSON or JSONL with single entry)
+          if (filename.endsWith('.jsonl')) {
+            const lines = text.trim().split('\n');
+            card = JSON.parse(lines[0]);
+          } else {
+            card = JSON.parse(text);
+          }
+        } else {
+          // Load specific card from JSONL
+          const cardIndex = parseInt($("viz-individual-cards").value) || 0;
+          const lines = text.trim().split('\n');
+          card = JSON.parse(lines[cardIndex]);
+          // Unwrap schema if present
+          if (card.schema) card = card.schema;
+        }
+        
+        loadedCardData = card;
+        loadedCardData._isMeta = isMeta;
+        
+        // Show preview
+        const title = card.metadata?.title || 'Untitled';
+        const domain = card.orientation_and_scope?.main_domain || card.biological_systems_analyzed?.lifeform_categories?.join(', ') || '';
+        const hasMetaMarkers = card.papers_covered || card.synthesis_metadata;
+        
+        $("viz-card-title").textContent = title;
+        $("viz-card-type-badge").textContent = isMeta || hasMetaMarkers ? 'Meta-Card' : 'Paper Card';
+        $("viz-card-type-badge").className = `text-xs px-2 py-0.5 rounded ${isMeta ? 'bg-accentPink/20 text-accentPink' : 'bg-accentCyan/20 text-accentCyan'}`;
+        $("viz-card-summary").textContent = `${domain}${domain ? ' • ' : ''}${card.metadata?.keywords?.slice(0, 5).join(', ') || ''}`;
+        preview.classList.remove("hidden");
+        
+        // Populate categories
+        populateCategorySelector(card);
+        categoriesPanel.classList.remove("hidden");
+        
+      } catch (err) {
+        console.error("Failed to load card:", err);
+        alert("Error loading card: " + err.message);
+      }
+    }
+
+    // Category display names mapping - comprehensive across all card types
+    const categoryDisplayNames = {
+      // Common fields
+      metadata: '📋 Metadata',
+      orientation_and_scope: '🎯 Orientation & Scope',
+      findings_and_comparisons: '🔬 Findings & Comparisons',
+      
+      // Network/plant cards
+      network_dynamics_facets: '🕸️ Network Dynamics',
+      biological_systems_analyzed: '🌿 Biological Systems',
+      drivers_of_change: '⚡ Drivers of Change',
+      methods_and_metrics: '📏 Methods & Metrics',
+      limitations_and_future_directions: '⚠️ Limitations & Future',
+      
+      // Phenomenology cards
+      core_thesis: '💡 Core Thesis',
+      feedback_mechanisms_definition: '🔄 Feedback Mechanisms',
+      phenomenology_definition: '🧘 Phenomenology Definition',
+      relational_analysis: '🔗 Relational Analysis',
+      theoretical_frameworks: '📐 Theoretical Frameworks',
+      empirical_evidence_or_models: '🔬 Empirical Evidence',
+      limitations_and_open_questions: '❓ Limitations & Questions',
+      
+      // Perception/creativity cards
+      cognitive_and_phenomenological_aspects: '🧠 Cognitive Aspects',
+      creative_and_artistic_dimensions: '🎨 Creative Dimensions',
+      
+      // Meta-card fields
+      synthesis_metadata: '📊 Synthesis Info',
+      papers_covered: '📚 Papers Covered',
+      emergent_themes: '✨ Emergent Themes',
+      cross_cutting_patterns: '🔗 Cross-cutting Patterns',
+      methodological_synthesis: '🔧 Methodological Synthesis',
+      theoretical_integration: '📐 Theoretical Integration',
+      practical_applications: '💡 Practical Applications',
+      research_gaps: '❓ Research Gaps',
+      future_directions: '🚀 Future Directions',
+      
+      // Concept invention cards
+      conceptual_framing: '💭 Conceptual Framing',
+      categories_of_word_invention: '📝 Word Invention Categories',
+      derivation_process_analysis: '🔧 Derivation Process',
+      interdisciplinary_connections: '🌐 Interdisciplinary Links',
+      
+      // Science poetry cards
+      poetry_of_science_dimensions: '🎭 Poetry of Science',
+      scientific_foundations: '🔬 Scientific Foundations',
+      
+      // Dream language cards
+      core_focus: '🎯 Core Focus',
+      language_and_meaning: '💬 Language & Meaning',
+      ambiguity_and_multistability: '🔮 Ambiguity & Multistability',
+      dreams_and_imagery: '💭 Dreams & Imagery',
+      integration_points: '🔗 Integration Points',
+      findings_or_claims: '📊 Findings & Claims',
+      
+      // Basic schema cards
+      citation: '📋 Citation',
+      problem: '❓ Problem',
+      theory: '📐 Theory',
+      methods: '🔧 Methods',
+      findings: '🔬 Findings',
+      limits: '⚠️ Limitations',
+      embodiment_facets: '🫀 Embodiment Facets',
+      notable_quotes: '💬 Notable Quotes',
+      open_questions: '❓ Open Questions'
+    };
+
+    function populateCategorySelector(card) {
+      const categoriesList = $("viz-categories-list");
+      const selectAllCheckbox = $("viz-select-all-categories");
+      
+      // Get top-level categories that have content
+      const categories = Object.keys(card).filter(key => {
+        // Skip internal/meta keys
+        if (key.startsWith('_')) return false;
+        // Skip empty values
+        const val = card[key];
+        if (val === null || val === undefined) return false;
+        if (typeof val === 'object' && Object.keys(val).length === 0) return false;
+        if (Array.isArray(val) && val.length === 0) return false;
+        return true;
+      });
+      
+      // Build checkboxes
+      categoriesList.innerHTML = categories.map(cat => {
+        const displayName = categoryDisplayNames[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        return `
+          <label class="viz-category-item flex items-center gap-2 p-2 rounded bg-slate-800/50 hover:bg-slate-700/50 cursor-pointer text-xs text-slate-300 transition-colors">
+            <input type="checkbox" class="viz-category-checkbox w-3.5 h-3.5 rounded border-slate-500 bg-slate-800 text-accentCyan focus:ring-accentCyan/50" value="${cat}" checked />
+            <span class="truncate">${displayName}</span>
+          </label>
+        `;
+      }).join('');
+      
+      // Setup select all checkbox
+      selectAllCheckbox.checked = true;
+      selectAllCheckbox.onchange = () => {
+        document.querySelectorAll('.viz-category-checkbox').forEach(cb => {
+          cb.checked = selectAllCheckbox.checked;
+        });
+      };
+      
+      // Update select all when individual checkboxes change
+      categoriesList.addEventListener('change', (e) => {
+        if (e.target.classList.contains('viz-category-checkbox')) {
+          const allChecked = [...document.querySelectorAll('.viz-category-checkbox')].every(cb => cb.checked);
+          const someChecked = [...document.querySelectorAll('.viz-category-checkbox')].some(cb => cb.checked);
+          selectAllCheckbox.checked = allChecked;
+          selectAllCheckbox.indeterminate = someChecked && !allChecked;
+        }
+      });
+    }
+
+    function getSelectedCategories() {
+      const checkboxes = document.querySelectorAll('.viz-category-checkbox:checked');
+      return [...checkboxes].map(cb => cb.value);
+    }
+
+    function filterCardByCategories(card, selectedCategories) {
+      const filtered = {};
+      selectedCategories.forEach(cat => {
+        if (card[cat] !== undefined) {
+          filtered[cat] = card[cat];
+        }
+      });
+      return filtered;
+    }
+
+    function buildVisualizationPrompt(card, mode) {
+      // Get selected categories
+      const selectedCategories = getSelectedCategories();
+      const filteredCard = filterCardByCategories(card, selectedCategories);
+      
+      // Always ensure we have basic context (title) even if metadata is unchecked
+      const fullMetadata = card.metadata || {};
+      const title = fullMetadata.title || 'Research Synthesis';
+      
+      // Check if all categories are selected (overview mode) vs focused mode
+      const allCategories = Object.keys(card).filter(k => !k.startsWith('_'));
+      const isOverviewMode = selectedCategories.length >= allCategories.length - 1; // -1 to allow skipping metadata
+      
+      let contentSections = [];
+      let focusNote = '';
+      
+      if (isOverviewMode) {
+        // OVERVIEW MODE: Extract key highlights only, not everything
+        contentSections.push(`TITLE: "${title}"`);
+        contentSections.push(`\n📌 KEY HIGHLIGHTS FOR OVERVIEW:`);
+        
+        // Extract just the essential elements from each category
+        selectedCategories.forEach(category => {
+          const data = filteredCard[category];
+          if (!data) return;
+          
+          const categoryLabel = categoryDisplayNames[category]?.replace(/^[^\s]+\s*/, '') || category.replace(/_/g, ' ').toUpperCase();
+          const summary = extractCategorySummary(category, data);
+          if (summary) {
+            contentSections.push(`\n• ${categoryLabel}: ${summary}`);
+          }
+        });
+        
+        focusNote = `\n\n🎯 OVERVIEW MODE:
+Create a holistic visualization showing the main themes and their relationships.
+- Show the big picture, not every detail
+- Highlight 5-8 key concepts maximum
+- Emphasize connections between major themes
+- Use visual hierarchy to show importance`;
+        
+      } else {
+        // FOCUSED MODE: Extract detailed content for selected categories only
+        contentSections.push(`TITLE: "${title}"`);
+        
+        // Process each selected category and extract ALL its content deeply
+        selectedCategories.forEach(category => {
+          const data = filteredCard[category];
+          if (!data) return;
+          
+          const categoryLabel = categoryDisplayNames[category]?.replace(/^[^\s]+\s*/, '') || category.replace(/_/g, ' ').toUpperCase();
+          const extractedContent = extractCategoryContent(category, data);
+          if (extractedContent) {
+            contentSections.push(`\n=== ${categoryLabel} ===\n${extractedContent}`);
+          }
+        });
+        
+        const selectedNames = selectedCategories.map(c => 
+          categoryDisplayNames[c]?.replace(/^[^\s]+\s*/, '') || c.replace(/_/g, ' ')
+        ).join(', ');
+        focusNote = `\n\n⚠️ CRITICAL FOCUS INSTRUCTION ⚠️
+This visualization MUST represent ONLY these specific aspects: ${selectedNames}.
+- Do NOT include a general overview of the paper/research
+- Do NOT add content that is not explicitly in the sections above
+- Every visual element must directly correspond to the content provided above
+- Show ALL the details provided for these specific categories
+- The goal is a focused, detailed visualization of JUST the selected content`;
+      }
+      
+      const contentBlock = contentSections.join('\n');
+      
+      let prompt = '';
+      
+      switch (mode) {
+        case 'schematic':
+          prompt = `Create a visually striking conceptual diagram that maps the relationships between ideas from the content below.
+
+${contentBlock}${focusNote}
+
+STYLE REQUIREMENTS:
+- Beautiful, modern scientific illustration style
+- Flowing connections between concepts using elegant curved lines and arrows
+- Use varied geometric shapes (circles, hexagons, rounded rectangles) for different concept types
+- Rich but harmonious color palette with gradients and subtle glows
+- Visual hierarchy: larger/brighter elements for central concepts
+- Connections should show directionality and relationship types through line styles (solid, dashed, varying thickness)
+- Minimal text: only key concept names as short labels (1-3 words each)
+- Add small icons or symbols to represent concept categories
+- Soft shadows and depth to create visual interest
+- Clean composition with breathing room between elements
+- Light or gradient background that complements the color scheme
+- Inspired by modern data visualization and concept mapping aesthetics`;
+          break;
+          
+        case 'intuitive':
+          prompt = `Create an artistic, metaphorical visualization with embedded text representing ONLY the specific content below.
+
+${contentBlock}${focusNote}
+
+STYLE REQUIREMENTS:
+- Dreamlike, evocative imagery blended with concept mapping
+- IMPORTANT: Include floating text labels for key concepts FROM THE CONTENT ABOVE ONLY
+- Integrate words organically into the composition
+- Add handwritten-style annotations connecting ideas
+- Rich colors and organic forms
+- Abstract but meaningful composition with labeled regions
+- Blend scientific and artistic aesthetics
+- Create emotional resonance while maintaining clarity
+- Like an illustrated mind map or annotated art piece`;
+          break;
+          
+        case 'network':
+          prompt = `Create a node-link network diagram visualizing ONLY the connections from the specific content below.
+
+${contentBlock}${focusNote}
+
+STYLE REQUIREMENTS:
+- Force-directed network layout
+- Colored nodes by category/type
+- Varying edge thickness for importance
+- IMPORTANT: Clear text labels on ALL nodes with concept names FROM THE CONTENT ABOVE ONLY
+- Label edges with relationship types
+- Include a legend explaining node colors
+- Dark background with glowing nodes
+- Data visualization aesthetic`;
+          break;
+          
+        case 'infographic':
+          prompt = `Create a data-rich infographic poster representing ONLY the specific content below.
+
+${contentBlock}${focusNote}
+
+STYLE REQUIREMENTS:
+- Modern infographic design
+- IMPORTANT: Include clear readable text for all sections FROM THE CONTENT ABOVE ONLY
+- Bold title at top
+- Icons paired with descriptive text labels
+- Organized sections with clear hierarchy and headings
+- Data visualization elements with axis labels
+- Bold typography for headings, readable body text
+- Cohesive color scheme
+- Magazine or poster quality with emphasis on readability`;
+          break;
+      }
+      
+      return prompt;
+    }
+
+    // Helper function to extract a brief summary of a category (for overview mode)
+    function extractCategorySummary(category, data) {
+      if (!data) return '';
+      
+      // Handle arrays - just get first 2-3 items briefly
+      if (Array.isArray(data)) {
+        const items = data.slice(0, 3).map(item => {
+          if (typeof item === 'string') return item.substring(0, 80);
+          if (typeof item === 'object') {
+            return item.name || item.title || item.description?.substring(0, 80) || '';
+          }
+          return '';
+        }).filter(Boolean);
+        return items.join('; ');
+      }
+      
+      // Handle objects - extract the most important field
+      if (typeof data === 'object') {
+        // Priority fields to look for
+        const priorityFields = ['description', 'summary', 'main_question', 'core_claim', 
+                                'central_claim', 'thesis', 'claim', 'definition', 'overview'];
+        
+        // First, try to find a summary/description field
+        for (const field of priorityFields) {
+          if (data[field] && typeof data[field] === 'string') {
+            return data[field].substring(0, 150);
+          }
+        }
+        
+        // Otherwise, collect key themes from nested objects
+        const themes = [];
+        Object.entries(data).forEach(([key, value]) => {
+          if (key === 'citations_or_quotes' || key.startsWith('_')) return;
+          
+          if (typeof value === 'string' && value.length > 10 && value.length < 200) {
+            themes.push(value.substring(0, 60));
+          } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Look for description in nested object
+            if (value.description) {
+              themes.push(value.description.substring(0, 60));
+            } else if (value.name || value.title) {
+              themes.push(value.name || value.title);
+            }
+          } else if (Array.isArray(value) && value.length > 0) {
+            // Get first item from array
+            const first = value[0];
+            if (typeof first === 'string') {
+              themes.push(first.substring(0, 50));
+            } else if (first?.name || first?.description) {
+              themes.push((first.name || first.description).substring(0, 50));
+            }
+          }
+          
+          if (themes.length >= 3) return; // Limit to 3 themes
+        });
+        
+        return themes.slice(0, 3).join('; ');
+      }
+      
+      // Handle simple strings
+      if (typeof data === 'string') {
+        return data.substring(0, 150);
+      }
+      
+      return '';
+    }
+
+    // Helper function to deeply extract content from a category (for focused mode)
+    function extractCategoryContent(category, data) {
+      if (!data) return '';
+      
+      let lines = [];
+      
+      // Handle arrays directly
+      if (Array.isArray(data)) {
+        data.slice(0, 8).forEach(item => {
+          if (typeof item === 'string') {
+            lines.push(`• ${item}`);
+          } else if (typeof item === 'object') {
+            const desc = item.description || item.name || item.title || item.central_claim || JSON.stringify(item);
+            lines.push(`• ${desc}`);
+          }
+        });
+        return lines.join('\n');
+      }
+      
+      // Handle objects - iterate through all keys with smart extraction
+      if (typeof data === 'object') {
+        Object.entries(data).forEach(([key, value]) => {
+          // Skip citation fields and internal fields
+          if (key === 'citations_or_quotes' || key.startsWith('_')) return;
+          
+          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          
+          // Handle strings
+          if (typeof value === 'string' && value.trim()) {
+            lines.push(`${label}: ${value}`);
+          } 
+          // Handle boolean with suggested/true pattern
+          else if (typeof value === 'boolean') {
+            if (value) lines.push(`${label}: Yes`);
+          }
+          // Handle arrays
+          else if (Array.isArray(value) && value.length > 0) {
+            lines.push(`${label}:`);
+            value.slice(0, 8).forEach(item => {
+              if (typeof item === 'string') {
+                lines.push(`  • ${item}`);
+              } else if (typeof item === 'object') {
+                // Handle complex items with multiple potential text fields
+                const desc = item.description || item.name || item.title || item.claim || item.central_claim || '';
+                const examples = item.examples ? ` (e.g., ${item.examples.slice(0,3).join(', ')})` : '';
+                if (desc) {
+                  lines.push(`  • ${desc}${examples}`);
+                } else {
+                  // Fallback: extract first string field
+                  const firstString = Object.values(item).find(v => typeof v === 'string' && v.length > 10);
+                  if (firstString) lines.push(`  • ${firstString.substring(0, 200)}`);
+                }
+              }
+            });
+          } 
+          // Handle nested objects (2nd level)
+          else if (typeof value === 'object' && value !== null) {
+            const nestedContent = [];
+            Object.entries(value).forEach(([nestedKey, nestedVal]) => {
+              if (nestedKey === 'citations_or_quotes' || nestedKey.startsWith('_')) return;
+              const nestedLabel = nestedKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              
+              if (typeof nestedVal === 'string' && nestedVal.trim()) {
+                nestedContent.push(`  ${nestedLabel}: ${nestedVal}`);
+              } else if (typeof nestedVal === 'boolean' && nestedVal) {
+                nestedContent.push(`  ${nestedLabel}: Yes`);
+              } else if (Array.isArray(nestedVal) && nestedVal.length > 0) {
+                nestedContent.push(`  ${nestedLabel}:`);
+                nestedVal.slice(0, 6).forEach(item => {
+                  if (typeof item === 'string') {
+                    nestedContent.push(`    • ${item}`);
+                  } else if (typeof item === 'object') {
+                    const desc = item.description || item.name || item.title || '';
+                    if (desc) nestedContent.push(`    • ${desc}`);
+                  }
+                });
+              }
+              // Handle 3rd level nested objects
+              else if (typeof nestedVal === 'object' && nestedVal !== null) {
+                const thirdLevel = [];
+                Object.entries(nestedVal).forEach(([thirdKey, thirdVal]) => {
+                  if (thirdKey === 'citations_or_quotes') return;
+                  const thirdLabel = thirdKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  if (typeof thirdVal === 'string' && thirdVal.trim()) {
+                    thirdLevel.push(`    ${thirdLabel}: ${thirdVal}`);
+                  } else if (Array.isArray(thirdVal) && thirdVal.length > 0) {
+                    thirdLevel.push(`    ${thirdLabel}: ${thirdVal.slice(0,4).map(i => typeof i === 'string' ? i : i.description || i.name || '').filter(Boolean).join('; ')}`);
+                  }
+                });
+                if (thirdLevel.length > 0) {
+                  nestedContent.push(`  ${nestedLabel}:`);
+                  nestedContent.push(...thirdLevel);
+                }
+              }
+            });
+            if (nestedContent.length > 0) {
+              lines.push(`${label}:`);
+              lines.push(...nestedContent);
+            }
+          }
+        });
+      }
+      
+      return lines.join('\n');
+    }
+
+    async function generateVisualization() {
+      const apiKey = $("viz-api-key").value.trim();
+      const status = $("viz-status");
+      const btn = $("btn-generate-viz");
+      
+      if (!apiKey) {
+        status.innerHTML = '<span class="text-yellow-400">Please enter your Google AI API key</span>';
+        return;
+      }
+      
+      if (!loadedCardData) {
+        status.innerHTML = '<span class="text-yellow-400">Please load a card first</span>';
+        return;
+      }
+      
+      const mode = $("viz-mode-value").value || 'schematic';
+      const model = $("viz-model-value").value || 'gemini-2.5-flash-preview-05-20';
+      
+      // Build the prompt
+      generatedPrompt = buildVisualizationPrompt(loadedCardData, mode);
+      
+      status.innerHTML = '<span class="text-accentCyan animate-pulse">Generating visualization...</span>';
+      btn.disabled = true;
+      btn.classList.add("opacity-50", "cursor-wait");
+      
+      try {
+        const result = await apiGenerateVision(apiKey, generatedPrompt, model);
+        
+        if (result.success && result.imageData) {
+          generatedImageData = result.imageData;
+          $("viz-result-image").src = result.imageData;
+          $("viz-prompt-display").textContent = generatedPrompt;
+          $("viz-result-container").classList.remove("hidden");
+          status.innerHTML = '<span class="text-green-400">✓ Visualization generated successfully!</span>';
+        } else {
+          status.innerHTML = `<span class="text-red-400">✗ ${result.error || 'Failed to generate image'}</span>`;
+        }
+      } catch (err) {
+        console.error("Visualization error:", err);
+        status.innerHTML = `<span class="text-red-400">✗ Error: ${err.message}</span>`;
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove("opacity-50", "cursor-wait");
+      }
+    }
+
+    async function apiGenerateVision(apiKey, prompt, model) {
+      const response = await fetch(`${API_BASE}/generate_vision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, prompt, model })
+      });
+      return await response.json();
+    }
+
+    function downloadVisualization() {
+      if (!generatedImageData) return;
+      
+      const link = document.createElement('a');
+      link.href = generatedImageData;
+      link.download = `knowledge-card-viz-${Date.now()}.png`;
+      link.click();
     }
   </script>
 

@@ -633,9 +633,10 @@ def run_gemini_cards_with_progress(
         raise FileNotFoundError(f"Papers folder not found: {papers_dir}")
 
     # --- set model if provided ---
+    global GEMINI_MODEL
     if model:
-        import gemini_cards
-        gemini_cards.GEMINI_MODEL = model
+        GEMINI_MODEL = model
+        print(f"[CONFIG] Using model: {model}")
 
     report("init", 0, 100, "Initializing Gemini...")
     init_gemini()
