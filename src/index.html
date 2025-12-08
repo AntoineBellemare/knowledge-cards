@@ -160,7 +160,7 @@
 
     <div class="px-5 py-3 border-t borderSoft text-[0.65rem] text-slate-500 font-mono">
       <div class="flex items-center justify-between">
-        <span>backend: offline mock</span>
+        <span id="session-indicator" class="text-slate-600">session: ---</span>
         <span class="text-accentPurple">v0.1</span>
       </div>
     </div>
@@ -695,6 +695,41 @@
       : "https://knowledge-cards-production.up.railway.app";
     
     console.log("[DEBUG] hostname:", window.location.hostname, "| isLocal:", isLocal, "| API_BASE:", API_BASE);
+
+    // ----- Session ID for user isolation -----
+    function getSessionId() {
+      let sessionId = localStorage.getItem('kc_session_id');
+      if (!sessionId) {
+        // Generate a short unique ID: 8 chars
+        sessionId = 'u' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem('kc_session_id', sessionId);
+        console.log("[SESSION] Created new session:", sessionId);
+      }
+      return sessionId;
+    }
+    
+    const SESSION_ID = getSessionId();
+    console.log("[SESSION] Using session ID:", SESSION_ID);
+    
+    // Helper to add session prefix to folder names
+    function sessionFolder(folderName) {
+      // Don't double-prefix if already has session ID
+      if (folderName.startsWith(SESSION_ID + '_')) return folderName;
+      return `${SESSION_ID}_${folderName}`;
+    }
+    
+    // Helper to strip session prefix for display
+    function displayFolder(folderName) {
+      if (folderName.startsWith(SESSION_ID + '_')) {
+        return folderName.substring(SESSION_ID.length + 1);
+      }
+      return folderName;
+    }
+    
+    // Check if a folder/file belongs to current session
+    function isMySession(name) {
+      return name.startsWith(SESSION_ID + '_');
+    }
 
     // ----- DOM helpers -----
     function $(id) {
@@ -1250,10 +1285,15 @@
           schemaSelect.appendChild(opt);
         });
 
+        // Filter folders to only show current session's folders (online) or all (local)
         foldersRes.folders.forEach((folder) => {
+          // In production, only show folders belonging to this session
+          if (!isLocal && !isMySession(folder)) return;
+          
           const opt = document.createElement("option");
           opt.value = folder;
-          opt.textContent = folder;
+          // Display without session prefix
+          opt.textContent = isLocal ? folder : displayFolder(folder);
           folderSelect.appendChild(opt);
         });
       } catch (err) {
@@ -1422,18 +1462,21 @@
       $("btn-upload-papers").onclick = handleUploadPapers;
       $("btn-refresh-results").onclick = refreshResultsList;
 
+      // Show session ID in sidebar
+      $("session-indicator").textContent = isLocal ? "local mode" : `session: ${SESSION_ID}`;
+
       // initial view
       setView("welcome");
     });
 
     // ----- Upload handler -----
     async function handleUploadPapers() {
-      const folderName = $("upload-folder-name").value.trim();
+      const folderNameRaw = $("upload-folder-name").value.trim();
       const filesInput = $("upload-files");
       const statusEl = $("upload-status");
       const btn = $("btn-upload-papers");
       
-      if (!folderName) {
+      if (!folderNameRaw) {
         statusEl.innerHTML = '<span class="text-yellow-400">Please enter a folder name</span>';
         return;
       }
@@ -1444,10 +1487,13 @@
       }
       
       // Validate folder name (alphanumeric, underscores, hyphens only)
-      if (!/^[a-zA-Z0-9_-]+$/.test(folderName)) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(folderNameRaw)) {
         statusEl.innerHTML = '<span class="text-yellow-400">Folder name can only contain letters, numbers, underscores, and hyphens</span>';
         return;
       }
+      
+      // Add session prefix for online usage
+      const folderName = isLocal ? folderNameRaw : sessionFolder(folderNameRaw);
       
       btn.disabled = true;
       btn.classList.add("opacity-50", "cursor-wait");
@@ -1455,7 +1501,8 @@
       
       try {
         const result = await apiUploadPapers(folderName, filesInput.files);
-        statusEl.innerHTML = `<span class="text-green-400">✓ Uploaded ${result.uploaded.length} file(s) to "${result.folder}"</span>`;
+        const displayName = isLocal ? result.folder : displayFolder(result.folder);
+        statusEl.innerHTML = `<span class="text-green-400">✓ Uploaded ${result.uploaded.length} file(s) to "${displayName}"</span>`;
         
         // Clear inputs
         $("upload-folder-name").value = "";
@@ -1464,7 +1511,7 @@
         // Refresh folder list
         await refreshRunOptions();
         
-        // Auto-select the new folder
+        // Auto-select the new folder (use full name with prefix)
         $("run-folder").value = folderName;
       } catch (err) {
         console.error("Upload error:", err);
@@ -1483,14 +1530,20 @@
       try {
         const data = await apiListResults();
         
-        if (!data.results || data.results.length === 0) {
+        // Filter results to only show current session's files (online) or all (local)
+        let results = data.results || [];
+        if (!isLocal) {
+          results = results.filter(f => f.name.includes(SESSION_ID + '_'));
+        }
+        
+        if (results.length === 0) {
           container.innerHTML = '<span class="text-slate-500">No result files found. Run the pipeline to generate results.</span>';
           return;
         }
         
         // Group by base name (e.g., cards_networks__plant_cognition)
         const grouped = {};
-        data.results.forEach(f => {
+        results.forEach(f => {
           // Extract base name without extension
           const baseName = f.name.replace(/\.(jsonl|csv|pdf|json)$/, '');
           if (!grouped[baseName]) grouped[baseName] = [];
@@ -1500,9 +1553,11 @@
         let html = '<div class="space-y-3">';
         Object.keys(grouped).sort().reverse().forEach(baseName => {
           const files = grouped[baseName];
+          // Display name without session prefix
+          const displayName = isLocal ? baseName : baseName.replace(new RegExp(`_${SESSION_ID}_`), '_');
           html += `
             <div class="p-3 rounded-lg bg-slate-900/50 border border-slate-700">
-              <div class="text-accentCyan mb-2 text-xs truncate" title="${baseName}">${baseName}</div>
+              <div class="text-accentCyan mb-2 text-xs truncate" title="${displayName}">${displayName}</div>
               <div class="flex flex-wrap gap-2">
           `;
           files.forEach(f => {
