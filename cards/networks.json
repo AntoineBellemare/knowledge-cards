@@ -1,0 +1,112 @@
+{
+  "id": "tmp_1763573268491",
+  "name": "networks",
+  "question": "how does network dynamics change across biological lifeforms",
+  "createdAt": "2025-11-19T17:27:48.491Z",
+  "schema": {
+    "metadata": {
+      "title": "",
+      "authors": [],
+      "year": "",
+      "venue": "",
+      "doi": "",
+      "keywords": [],
+      "citations_or_quotes": []
+    },
+    "orientation_and_scope": {
+      "main_domain": "",
+      "research_question_focus": "network dynamics across biological lifeforms",
+      "scope_of_inference": "",
+      "theoretical_stance": "",
+      "citations_or_quotes": []
+    },
+    "biological_systems_analyzed": {
+      "lifeform_categories": [],
+      "levels_of_organization": [],
+      "examples": [],
+      "citations_or_quotes": []
+    },
+    "network_dynamics_facets": {
+      "topology": {
+        "description": "",
+        "metrics": [],
+        "changes_observed": "",
+        "citations_or_quotes": []
+      },
+      "functionality": {
+        "description": "",
+        "metrics": [],
+        "changes_observed": "",
+        "citations_or_quotes": []
+      },
+      "temporal_aspects": {
+        "description": "",
+        "metrics": [],
+        "changes_observed": "",
+        "citations_or_quotes": []
+      },
+      "information_flow": {
+        "description": "",
+        "metrics": [],
+        "changes_observed": "",
+        "citations_or_quotes": []
+      },
+      "robustness_and_resilience": {
+        "description": "",
+        "metrics": [],
+        "changes_observed": "",
+        "citations_or_quotes": []
+      }
+    },
+    "drivers_of_change": {
+      "evolutionary_pressures": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "environmental_factors": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "ontogenetic_development": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "internal_mechanisms": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      }
+    },
+    "methods_and_metrics": {
+      "study_type": "",
+      "data_sources": [],
+      "analytical_approaches": [],
+      "specific_metrics_used": [],
+      "citations_or_quotes": []
+    },
+    "findings_and_comparisons": {
+      "key_findings": [],
+      "cross_lifeform_comparisons": [],
+      "universal_principles": {
+        "suggested": false,
+        "description": "",
+        "citations_or_quotes": []
+      },
+      "unique_adaptations": {
+        "description": "",
+        "citations_or_quotes": []
+      },
+      "citations_or_quotes": []
+    },
+    "limitations_and_future_directions": {
+      "methodological_limitations": [],
+      "unanswered_questions": [],
+      "future_research_avenues": [],
+      "citations_or_quotes": []
+    },
+    "citations_or_quotes": []
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "id": "tmp_1763573417011",
+  "name": "plant_cognition",
+  "question": "dimension of plant cognition and networks dynamics across biological scales",
+  "createdAt": "2025-11-19T17:30:17.011Z",
+  "schema": {
+    "metadata": {
+      "title": "",
+      "authors": [],
+      "year": "",
+      "venue": "",
+      "doi": "",
+      "keywords": [],
+      "citations_or_quotes": []
+    },
+    "orientation_and_scope": {
+      "main_domain": "",
+      "system_focus": "plant cognition and network dynamics",
+      "biological_scales_of_interest": [],
+      "type_of_work": "",
+      "research_question_addressed": "",
+      "citations_or_quotes": []
+    },
+    "plant_cognition_framework": {
+      "definition_of_cognition_in_plants": "",
+      "key_constructs_or_concepts": [],
+      "theoretical_orientation": "",
+      "metaphors_or_analogies_used": [],
+      "citations_or_quotes": []
+    },
+    "network_dynamics_framework": {
+      "network_definition_in_plants": "",
+      "types_of_networks_analyzed": [],
+      "dynamics_and_processes": [],
+      "citations_or_quotes": []
+    },
+    "biological_scales": {
+      "molecular_and_cellular_level": {
+        "description": "",
+        "relevant_processes": [],
+        "network_aspects": [],
+        "citations_or_quotes": []
+      },
+      "organ_and_tissue_level": {
+        "description": "",
+        "relevant_processes": [],
+        "network_aspects": [],
+        "citations_or_quotes": []
+      },
+      "whole_organism_level": {
+        "description": "",
+        "relevant_processes": [],
+        "network_aspects": [],
+        "citations_or_quotes": []
+      },
+      "population_and_ecosystem_level": {
+        "description": "",
+        "relevant_processes": [],
+        "network_aspects": [],
+        "citations_or_quotes": []
+      }
+    },
+    "interplay_between_cognition_and_networks": {
+      "how_cognition_influences_network_dynamics": "",
+      "how_network_dynamics_enable_or_shape_cognition": "",
+      "scale_transitions_and_integration": "",
+      "citations_or_quotes": []
+    },
+    "methods_and_evidence": {
+      "experimental_approaches": [],
+      "observational_studies": [],
+      "modeling_and_simulation": [],
+      "data_types_and_analysis": [],
+      "citations_or_quotes": []
+    },
+    "key_findings_or_claims": {
+      "about_plant_cognition": [],
+      "about_network_dynamics": [],
+      "about_scale_integration": [],
+      "citations_or_quotes": []
+    },
+    "limitations_and_future_directions": {
+      "current_limitations": [],
+      "unanswered_questions": [],
+      "future_research_avenues": [],
+      "citations_or_quotes": []
+    },
+    "citations_or_quotes": []
+  }
+}

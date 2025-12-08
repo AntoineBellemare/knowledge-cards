@@ -190,12 +190,12 @@ def render_dict(key: str, value: Dict[str, Any], story, styles, level: int):
     story.append(heading_for_level(key, level, styles))
     story.append(Spacer(1, 0.1 * cm))
 
-    # stable-ish order: alphabetical
-    for subk in sorted(value.keys()):
-        subv = value[subk]
+    # preserve original JSON insertion order
+    for subk, subv in value.items():
         if not nonempty(subv):
             continue
         render_any(subk, subv, story, styles, level + 1)
+
 
     story.append(Spacer(1, 0.15 * cm))
 
@@ -275,15 +275,15 @@ def build_pdf(cards_path: Path, out_path: Path):
         # 1) citation block if present
         render_citation_block(story, card, styles)
 
-        # 2) everything else, schema-agnostic
-        # We skip keys already handled: citation + _file
-        for key in sorted(card.keys()):
+        # 2) everything else, schema-agnostic, in original JSON order
+        for key in card.keys():
             if key in ("citation", "_file"):
                 continue
-            val = card[key]
+            val = card.get(key)
             if not nonempty(val):
                 continue
             render_any(key, val, story, styles, level=1)
+
 
     doc.build(story)
     print(f"Saved PDF to {out_path}")

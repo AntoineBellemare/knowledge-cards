@@ -1,0 +1,128 @@
+{
+  "metadata": {
+    "title": "",
+    "authors": [],
+    "year": 0,
+    "venue": "",
+    "doi": "",
+    "keywords": [],
+    "citations_or_quotes": []
+  },
+  "conceptual_framing": {
+    "ontology_of_language": {
+      "description": "",
+      "core_metaphors": [],
+      "key_constructs": [],
+      "links_to_theories": [],
+      "citations_or_quotes": []
+    },
+    "nature_of_invention": {
+      "description": "",
+      "mechanisms_of_creation": [],
+      "role_of_context": [],
+      "citations_or_quotes": []
+    },
+    "relationship_to_existing_concepts": {
+      "description": "",
+      "innovation_vs_derivation": [],
+      "semantic_shifts": [],
+      "citations_or_quotes": []
+    }
+  },
+  "categories_of_word_invention": {
+    "invented_from_concepts": {
+      "description": "Words directly formed by abstracting or combining concepts.",
+      "types_or_patterns": [],
+      "exemplars": [],
+      "conceptual_underpinnings": [],
+      "citations_or_quotes": []
+    },
+    "invented_from_metaphors_or_analogies": {
+      "description": "Words derived through metaphorical extension or analogical reasoning from concepts.",
+      "metaphorical_sources": [],
+      "target_domains": [],
+      "analogical_structures": [],
+      "citations_or_quotes": []
+    },
+    "invented_from_experiential_or_perceptual_facets": {
+      "description": "Words formed based on sensory, embodied, or experiential aspects related to concepts.",
+      "sensory_modalities": [],
+      "embodied_actions": [],
+      "phenomenological_aspects": [],
+      "citations_or_quotes": []
+    },
+    "invented_from_functional_or_relational_properties": {
+      "description": "Words derived from the functions, roles, or relationships associated with concepts.",
+      "functional_descriptions": [],
+      "relational_dynamics": [],
+      "systemic_interactions": [],
+      "citations_or_quotes": []
+    },
+    "invented_from_ontological_or_metaphysical_assumptions": {
+      "description": "Words arising from underlying assumptions about existence, reality, or being.",
+      "ontological_categories": [],
+      "metaphysical_principles": [],
+      "epistemological_foundations": [],
+      "citations_or_quotes": []
+    }
+  },
+  "derivation_process_analysis": {
+    "linguistic_mechanisms": {
+      "description": "Specific linguistic processes used in invention (e.g., compounding, affixation, blending).",
+      "compounding": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "affixation": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "blending": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      },
+      "other_mechanisms": {
+        "description": "",
+        "examples": [],
+        "citations_or_quotes": []
+      }
+    },
+    "conceptual_to_lexical_mapping": {
+      "description": "How abstract concepts are translated into word forms.",
+      "mapping_strategies": [],
+      "degree_of_transparency": "",
+      "citations_or_quotes": []
+    }
+  },
+  "philosophical_implications": {
+    "language_and_thought": {
+      "description": "The influence of invented words on conceptualization and understanding.",
+      "determinism_vs_relativity": [],
+      "cognitive_flexibility": [],
+      "citations_or_quotes": []
+    },
+    "ontological_status_of_invented_words": {
+      "description": "Whether invented words represent new entities, concepts, or simply new labels.",
+      "realism_vs_nominalism": [],
+      "emergence_of_meaning": [],
+      "citations_or_quotes": []
+    }
+  },
+  "open_questions_and_future_directions": {
+    "unexplored_categories": {
+      "description": "Potential categories of word invention not covered.",
+      "hypothesized_types": [],
+      "citations_or_quotes": []
+    },
+    "testable_predictions": {
+      "description": "Predictions about future word invention based on conceptual shifts.",
+      "prediction_statements": [],
+      "experimental_paradigms": [],
+      "citations_or_quotes": []
+    }
+  },
+  "citations_or_quotes": []
+}

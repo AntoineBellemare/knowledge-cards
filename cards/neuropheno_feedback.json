@@ -1,0 +1,170 @@
+{
+  "metadata": {
+    "title": "",
+    "authors": [],
+    "year": 0,
+    "venue": "",
+    "doi": "",
+    "keywords": [],
+    "citations_or_quotes": []
+  },
+  "orientation_and_scope": {
+    "main_domain": "",
+    "work_type": "",
+    "research_question_addressed": "",
+    "thesis_claim": "",
+    "citations_or_quotes": []
+  },
+  "conceptual_framing_and_ontology": {
+    "core_metaphors": [],
+    "key_constructs": {
+      "biofeedback": {
+        "definition": "",
+        "conceptual_relations": [],
+        "citations_or_quotes": []
+      },
+      "phenomenology_of_biofeedback": {
+        "definition": "",
+        "key_elements": [],
+        "citations_or_quotes": []
+      },
+      "feedback_context": {
+        "definition": "",
+        "role_in_biofeedback": "",
+        "types_of_feedback": [],
+        "citations_or_quotes": []
+      },
+      "neurophenomenology": {
+        "definition": "",
+        "key_concepts": [],
+        "citations_or_quotes": []
+      }
+    },
+    "links_to_theories": [],
+    "relations_to_cognition_or_agency": {
+      "autonomy": false,
+      "control": false,
+      "awareness": false,
+      "intentionality": false,
+      "embodiment": false,
+      "citations_or_quotes": []
+    },
+    "ontological_claims": [],
+    "citations_or_quotes": []
+  },
+  "dimensions_of_biofeedback": {
+    "perceptual_phenomenology": {
+      "sensory_experience": {
+        "modalities": [],
+        "quality_of_experience": "",
+        "citations_or_quotes": []
+      },
+      "spatial_temporal_aspects": {
+        "experience_of_time": "",
+        "experience_of_space": "",
+        "citations_or_quotes": []
+      },
+      "citations_or_quotes": []
+    },
+    "affective_phenomenology": {
+      "emotional_valence": "",
+      "arousal_levels": "",
+      "emotional_regulation_aspects": "",
+      "citations_or_quotes": []
+    },
+    "cognitive_phenomenology": {
+      "attentional_processes": "",
+      "volitional_control_aspects": "",
+      "meaning_making": "",
+      "citations_or_quotes": []
+    },
+    "somatic_phenomenology": {
+      "bodily_sensations": "",
+      "interoception_aspects": "",
+      "proprioception_aspects": "",
+      "citations_or_quotes": []
+    },
+    "interpersonal_phenomenology": {
+      "shared_experience": "",
+      "relational_dynamics": "",
+      "citations_or_quotes": []
+    },
+    "citations_or_quotes": []
+  },
+  "feedback_mechanisms": {
+    "types_of_feedback_signals": [],
+    "feedback_loop_dynamics": {
+      "latency": "",
+      "gain": "",
+      "bandwidth": "",
+      "complexity": "",
+      "citations_or_quotes": []
+    },
+    "modes_of_feedback_delivery": [],
+    "citations_or_quotes": []
+  },
+  "neurophenomenological_connections": {
+    "mapping_biofeedback_phenomena_to_neural_correlates": {
+      "brain_regions_or_networks": [],
+      "neural_oscillations": [],
+      "neurotransmitter_systems": [],
+      "citations_or_quotes": []
+    },
+    "neurophenomenological_methods_for_biofeedback_study": {
+      "integrated_approaches": "",
+      "subjective_reports": "",
+      "objective_measures": "",
+      "citations_or_quotes": []
+    },
+    "qualitative_shifts_in_experience": {
+      "altered_states_of_consciousness": false,
+      "enhanced_self_awareness": false,
+      "shifts_in_perspective": false,
+      "citations_or_quotes": []
+    },
+    "citations_or_quotes": []
+  },
+  "empirical_methods_and_metrics": {
+    "study_design": "",
+    "participants_or_subjects": {
+      "population": "",
+      "sample_size": 0,
+      "citations_or_quotes": []
+    },
+    "biofeedback_protocols": {
+      "target_variables": [],
+      "training_duration": "",
+      "feedback_parameters": [],
+      "citations_or_quotes": []
+    },
+    "measures": {
+      "physiological_measures": [],
+      "behavioral_measures": [],
+      "subjective_reports": [],
+      "neurological_measures": [],
+      "citations_or_quotes": []
+    },
+    "data_analysis": [],
+    "key_metrics": {
+      "learning_rate": "",
+      "transfer_of_control": "",
+      "generalization": "",
+      "sustainability_of_effects": "",
+      "citations_or_quotes": []
+    },
+    "citations_or_quotes": []
+  },
+  "findings_and_claims": {
+    "core_results": [],
+    "boundary_conditions": [],
+    "limitations_of_current_understanding": [],
+    "citations_or_quotes": []
+  },
+  "open_questions_and_future_directions": {
+    "unanswered_questions": [],
+    "testable_predictions": [],
+    "potential_applications": [],
+    "citations_or_quotes": []
+  },
+  "citations_or_quotes": []
+}
