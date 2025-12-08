@@ -846,53 +846,81 @@
       return data; // {ok, jsonl, csv}
     }
 
-    // SSE-based streaming API for real-time progress
-    function apiRunGeminiWithProgress(schemaName, papersSubdir, onProgress) {
-      return new Promise((resolve, reject) => {
-        const url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaName)}&papers_subdir=${encodeURIComponent(papersSubdir)}`;
-        const eventSource = new EventSource(url);
-        
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            
-            if (data.type === 'keepalive') {
-              return; // Ignore keepalives
-            }
-            
-            if (data.type === 'error') {
-              eventSource.close();
-              reject(new Error(data.message));
-              return;
-            }
-            
-            if (data.type === 'complete') {
-              eventSource.close();
-              resolve({
-                ok: true,
-                schema_name: data.schema_name,
-                papers_folder: data.papers_folder,
-                jsonl: data.jsonl,
-                csv: data.csv,
-                pdf: data.pdf,
-              });
-              return;
-            }
-            
-            // Progress update
-            if (onProgress) {
-              onProgress(data);
-            }
-          } catch (e) {
-            console.error("Error parsing SSE data:", e);
-          }
-        };
-        
-        eventSource.onerror = (err) => {
-          eventSource.close();
-          reject(new Error("Connection to server lost"));
-        };
+    // SSE-based streaming API for real-time progress using fetch (works cross-origin)
+    async function apiRunGeminiWithProgress(schemaName, papersSubdir, onProgress) {
+      const url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaName)}&papers_subdir=${encodeURIComponent(papersSubdir)}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/event-stream',
+        },
       });
+      
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result = null;
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete SSE messages
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'keepalive') {
+                continue;
+              }
+              
+              if (data.type === 'error') {
+                throw new Error(data.message);
+              }
+              
+              if (data.type === 'complete') {
+                result = {
+                  ok: true,
+                  schema_name: data.schema_name,
+                  papers_folder: data.papers_folder,
+                  jsonl: data.jsonl,
+                  csv: data.csv,
+                  pdf: data.pdf,
+                };
+                continue;
+              }
+              
+              // Progress update
+              if (onProgress && data.stage) {
+                onProgress(data);
+              }
+            } catch (e) {
+              if (e.message && !e.message.includes('JSON')) {
+                throw e; // Re-throw non-JSON errors
+              }
+              console.warn("Error parsing SSE data:", e);
+            }
+          }
+        }
+      }
+      
+      if (!result) {
+        throw new Error("Stream ended without completion");
+      }
+      
+      return result;
     }
 
     async function loadTemplatesFromBackend() {
