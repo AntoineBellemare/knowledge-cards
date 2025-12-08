@@ -74,10 +74,20 @@ def bullet_list(items: List[str], style) -> ListFlowable:
 
 
 def infer_title_from_card(card: Dict[str, Any]) -> str:
+    """Extract paper title, preferring schema.metadata.title over citation.title."""
+    # First try schema.metadata.title (the actual paper title)
+    schema = card.get("schema") or {}
+    if isinstance(schema, dict):
+        metadata = schema.get("metadata") or {}
+        if isinstance(metadata, dict) and metadata.get("title"):
+            return str(metadata["title"])
+    
+    # Fallback to citation.title
     cit = card.get("citation") or {}
     if isinstance(cit, dict):
         if cit.get("title"):
             return str(cit["title"])
+    
     if card.get("_file"):
         return str(card["_file"])
     return "Untitled paper"
@@ -91,33 +101,60 @@ def join_list_str(lst: List[Any], sep: str = ", ") -> str:
 # ------------- top block: citation -------------
 
 def render_citation_block(story, card, styles):
-    cit = card.get("citation") or {}
+    """Render the paper header with title, authors, year, venue, etc."""
     title = infer_title_from_card(card)
-
+    
+    # Try to get metadata from schema.metadata first (preferred source)
+    schema = card.get("schema") or {}
+    metadata = schema.get("metadata") or {} if isinstance(schema, dict) else {}
+    cit = card.get("citation") or {}
+    
+    # Get authors - prefer schema.metadata.authors
     authors = ""
-    if isinstance(cit, dict) and isinstance(cit.get("authors"), list):
+    if isinstance(metadata, dict) and isinstance(metadata.get("authors"), list):
+        authors = join_list_str(metadata["authors"], sep=", ")
+    elif isinstance(cit, dict) and isinstance(cit.get("authors"), list):
         authors = join_list_str(cit["authors"], sep=", ")
 
+    # Build metadata line (year · venue · DOI)
     meta_parts: List[str] = []
-    if isinstance(cit, dict):
-        if cit.get("year"):
-            meta_parts.append(str(cit["year"]))
-        if cit.get("venue"):
-            meta_parts.append(str(cit["venue"]))
-        if cit.get("doi"):
-            meta_parts.append(f"DOI: {cit['doi']}")
+    
+    # Year - prefer schema.metadata.year
+    year = metadata.get("year") if isinstance(metadata, dict) else None
+    if not year and isinstance(cit, dict):
+        year = cit.get("year")
+    if year:
+        meta_parts.append(str(year))
+    
+    # Venue - prefer schema.metadata.venue
+    venue = metadata.get("venue") if isinstance(metadata, dict) else None
+    if not venue and isinstance(cit, dict):
+        venue = cit.get("venue")
+    if venue:
+        meta_parts.append(str(venue))
+    
+    # DOI - prefer schema.metadata.doi
+    doi = metadata.get("doi") if isinstance(metadata, dict) else None
+    if not doi and isinstance(cit, dict):
+        doi = cit.get("doi")
+    if doi:
+        meta_parts.append(f"DOI: {doi}")
 
     meta = " · ".join(meta_parts) if meta_parts else ""
 
+    # Render: Title, Authors, Meta line
     story.append(Paragraph(xml_escape(title), styles["Title"]))
     if authors:
         story.append(Paragraph(xml_escape(authors), styles["Italic"]))
     if meta:
         story.append(Paragraph(xml_escape(meta), styles["Small"]))
 
-    # optional keywords
-    if isinstance(cit, dict) and cit.get("keywords"):
-        kw = join_list_str(cit["keywords"], sep=", ")
+    # Optional keywords - prefer schema.metadata.keywords
+    keywords = metadata.get("keywords") if isinstance(metadata, dict) else None
+    if not keywords and isinstance(cit, dict):
+        keywords = cit.get("keywords")
+    if keywords:
+        kw = join_list_str(keywords, sep=", ")
         if kw:
             story.append(
                 Paragraph(f"<b>Keywords:</b> {xml_escape(kw)}", styles["BodyText"])

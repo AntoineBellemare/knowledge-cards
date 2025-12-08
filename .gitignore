@@ -1,0 +1,61 @@
+dev/
+results/
+papers/
+.vscode/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor settings
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# API keys and secrets (never commit these!)
+secrets/
+*.key
+*.pem
+
+# Results and outputs (optional - uncomment if you don't want to track results)
+# results/
+# dev/out*/
+
+# Large files / data
+*.pdf
+*.csv
+papers/**/*.pdf

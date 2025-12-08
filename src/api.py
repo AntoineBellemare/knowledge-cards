@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 
 from typing import Any, Dict, Optional, List
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-
-
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import os
+import json
+import shutil
+import asyncio
 from pathlib import Path
-import json, os
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+
 from generate_card_UI import generate_schema
-from gemini_template_creation import run_gemini_cards
+from gemini_template_creation import run_gemini_cards_with_progress
 
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR    = Path(__file__).resolve().parent.parent
@@ -82,9 +83,22 @@ class RunGeminiResponse(BaseModel):
 
 app = FastAPI(title="Knowledge Cards API")
 
+# CORS: Allow local development and production domains
+ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://localhost:5500",      # VS Code Live Server
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:5500",
+    "https://knowledge-cards.pages.dev",  # <- Update with your Cloudflare Pages URL
+]
+
+# In development, allow all origins; in production, restrict to ALLOWED_ORIGINS
+import os
+cors_origins = ["*"] if os.getenv("ENV", "development") == "development" else ALLOWED_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -171,8 +185,89 @@ def list_papers_folders() -> PapersFoldersResponse:
     folders = sorted(p.name for p in PAPERS_DIR.iterdir() if p.is_dir())
     return PapersFoldersResponse(folders=folders)
 
+
+@app.get("/run_gemini_stream")
+async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optional[str] = None):
+    """
+    SSE endpoint for real-time progress during card generation.
+    """
+    async def event_generator():
+        import queue
+        import threading
+        
+        progress_queue = queue.Queue()
+        result_holder = {"result": None, "error": None}
+        
+        def progress_callback(stage: str, current: int, total: int, message: str):
+            progress_queue.put({
+                "stage": stage,
+                "current": current,
+                "total": total,
+                "message": message,
+                "percent": int((current / total) * 100) if total > 0 else 0
+            })
+        
+        def run_task():
+            try:
+                result = run_gemini_cards_with_progress(
+                    schema_name=schema_name,
+                    papers_folder=papers_subdir,
+                    model=model,
+                    progress_callback=progress_callback,
+                )
+                result_holder["result"] = result
+            except Exception as e:
+                result_holder["error"] = str(e)
+            finally:
+                progress_queue.put(None)  # Signal completion
+        
+        # Start background thread
+        thread = threading.Thread(target=run_task)
+        thread.start()
+        
+        # Stream progress events
+        while True:
+            try:
+                item = progress_queue.get(timeout=0.5)
+                if item is None:
+                    break
+                yield f"data: {json.dumps(item)}\n\n"
+            except queue.Empty:
+                # Send keepalive
+                yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
+        
+        thread.join()
+        
+        # Send final result
+        if result_holder["error"]:
+            yield f"data: {json.dumps({'type': 'error', 'message': result_holder['error']})}\n\n"
+        else:
+            jsonl_path, csv_path, pdf_path = result_holder["result"]
+            
+            def to_rel(p: Path) -> str:
+                p = Path(p).resolve()
+                try:
+                    return str(p.relative_to(ROOT_DIR))
+                except ValueError:
+                    return f"results/{p.name}"
+            
+            yield f"data: {json.dumps({'type': 'complete', 'jsonl': to_rel(jsonl_path), 'csv': to_rel(csv_path), 'pdf': to_rel(pdf_path), 'schema_name': schema_name, 'papers_folder': papers_subdir})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
 @app.post("/run_gemini", response_model=RunGeminiResponse)
 def run_gemini(req: RunGeminiRequest) -> RunGeminiResponse:
+    """Legacy non-streaming endpoint (kept for compatibility)."""
+    from gemini_template_creation import run_gemini_cards
     try:
         jsonl_path, csv_path, pdf_path = run_gemini_cards(
             schema_name=req.schema_name,
@@ -210,6 +305,64 @@ def run_gemini(req: RunGeminiRequest) -> RunGeminiResponse:
     )
 
 
+# ---------- File Upload / Download Endpoints ----------
+
+@app.post("/upload_papers/{folder_name}")
+async def upload_papers(folder_name: str, files: List[UploadFile] = File(...)):
+    """Upload PDF papers to a specific folder."""
+    folder_path = PAPERS_DIR / folder_name
+    folder_path.mkdir(parents=True, exist_ok=True)
+    
+    uploaded = []
+    for file in files:
+        if not file.filename.lower().endswith(".pdf"):
+            continue
+        dest = folder_path / file.filename
+        with dest.open("wb") as f:
+            content = await file.read()
+            f.write(content)
+        uploaded.append(file.filename)
+    
+    return {"ok": True, "folder": folder_name, "uploaded": uploaded}
+
+
+@app.get("/download/{file_type}/{filename}")
+async def download_file(file_type: str, filename: str):
+    """Download a result file (jsonl, csv, pdf)."""
+    if file_type not in ["results", "cards"]:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    
+    if file_type == "results":
+        file_path = RESULTS_DIR / filename
+    else:
+        file_path = CARDS_DIR / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine media type
+    media_type = "application/octet-stream"
+    if filename.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif filename.endswith(".csv"):
+        media_type = "text/csv"
+    elif filename.endswith(".jsonl") or filename.endswith(".json"):
+        media_type = "application/json"
+    
+    return FileResponse(file_path, media_type=media_type, filename=filename)
+
+
+@app.delete("/papers/{folder_name}")
+async def delete_papers_folder(folder_name: str):
+    """Delete a papers folder."""
+    folder_path = PAPERS_DIR / folder_name
+    if not folder_path.exists():
+        raise HTTPException(status_code=404, detail="Folder not found")
+    
+    shutil.rmtree(folder_path)
+    return {"ok": True, "deleted": folder_name}
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api:app", host="127.0.0.1", port=9000, reload=True)
+    uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)

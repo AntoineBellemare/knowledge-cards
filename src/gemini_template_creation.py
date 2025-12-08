@@ -605,6 +605,117 @@ def run_gemini_cards(
     return jsonl_path.resolve(), csv_path.resolve(), pdf_path.resolve()
 
 
+def run_gemini_cards_with_progress(
+    schema_name: str,
+    papers_folder: str,
+    model: Optional[str] = None,
+    progress_callback=None,
+) -> Tuple[Path, Path, Path]:
+    """
+    Same as run_gemini_cards but with progress callbacks for real-time updates.
+    
+    progress_callback(stage: str, current: int, total: int, message: str)
+    """
+    def report(stage: str, current: int, total: int, message: str):
+        if progress_callback:
+            progress_callback(stage, current, total, message)
+        print(f"[{stage}] {current}/{total} - {message}")
+
+    # --- resolve schema ---
+    schema_file = schema_name if schema_name.endswith(".json") else schema_name + ".json"
+    schema_path = CARDS_DIR / schema_file
+    if not schema_path.exists():
+        raise FileNotFoundError(f"Schema not found: {schema_path}")
+
+    # --- resolve papers dir ---
+    papers_dir = PAPERS_DIR / papers_folder
+    if not papers_dir.exists():
+        raise FileNotFoundError(f"Papers folder not found: {papers_dir}")
+
+    # --- set model if provided ---
+    if model:
+        import gemini_cards
+        gemini_cards.GEMINI_MODEL = model
+
+    report("init", 0, 100, "Initializing Gemini...")
+    init_gemini()
+    schema = load_schema(schema_path)
+
+    pdfs = sorted(papers_dir.glob("*.pdf"))
+    if not pdfs:
+        raise RuntimeError(f"No PDFs found in {papers_dir}")
+
+    total_pdfs = len(pdfs)
+    cards: List[Dict[str, Any]] = []
+    rows: List[Dict[str, Any]] = []
+
+    report("loading", 0, total_pdfs, f"Found {total_pdfs} PDFs to process")
+
+    for idx, pdf in enumerate(pdfs):
+        report("cards", idx + 1, total_pdfs, f"Processing: {pdf.name}")
+        try:
+            card = build_card_for_pdf(pdf, schema)
+            cards.append(card)
+        except Exception as e:
+            print(f"[WARN|card] {pdf.name}: {e}")
+            continue
+
+        try:
+            rows.append(compact_row(card))
+        except Exception as e:
+            print(f"[WARN|row ] {pdf.name}: {e}")
+
+    if not cards:
+        raise RuntimeError("No cards were generated.")
+
+    # --- build base name ---
+    schema_stem = schema_path.stem
+    folder_stem = Path(papers_folder).name
+    base_name   = f"cards_{schema_stem}__{folder_stem}"
+
+    report("saving", 1, 4, "Saving JSONL...")
+    jsonl_path = RESULTS_DIR / f"{base_name}.jsonl"
+    csv_path   = RESULTS_DIR / f"{base_name}_summary.csv"
+
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        for c in cards:
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
+
+    report("saving", 2, 4, "Saving CSV...")
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    report("saving", 3, 4, "Generating PDF report...")
+    pdf_path = RESULTS_DIR / f"{base_name}.pdf"
+    build_pdf(jsonl_path, pdf_path)
+
+    # --- META-CARD ---
+    report("meta", 1, 3, "Generating meta-card with Gemini...")
+    try:
+        schemas_for_meta = load_schemas_from_file(jsonl_path)
+        meta_card = generate_meta_card(
+            schemas_for_meta,
+            model=model or GEMINI_MODEL,
+        )
+
+        report("meta", 2, 3, "Saving meta-card...")
+        meta_json_path = RESULTS_DIR / f"{base_name}__meta.json"
+        with meta_json_path.open("w", encoding="utf-8") as f:
+            json.dump(meta_card, f, ensure_ascii=False, indent=2)
+
+        meta_jsonl_path = RESULTS_DIR / f"{base_name}__meta.jsonl"
+        with meta_jsonl_path.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(meta_card, ensure_ascii=False) + "\n")
+
+        report("meta", 3, 3, "Generating meta-card PDF...")
+        meta_pdf_path = RESULTS_DIR / f"{base_name}__meta.pdf"
+        build_pdf(meta_jsonl_path, meta_pdf_path)
+
+    except Exception as e:
+        print(f"[WARN] Could not build meta-card: {e}")
+
+    report("complete", 100, 100, "All done!")
+    return jsonl_path.resolve(), csv_path.resolve(), pdf_path.resolve()
+
 
 def main():
     import argparse
