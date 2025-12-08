@@ -229,9 +229,11 @@ async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optiona
                 if item is None:
                     break
                 yield f"data: {json.dumps(item)}\n\n"
+                await asyncio.sleep(0.01)  # Small delay to help with proxy buffering
             except queue.Empty:
-                # Send keepalive
+                # Send keepalive to keep connection alive and help with buffering
                 yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
+                await asyncio.sleep(0.01)
         
         thread.join()
         
@@ -254,9 +256,11 @@ async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optiona
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no",  # Disable nginx/proxy buffering
+            "Transfer-Encoding": "chunked",
         }
     )
 
