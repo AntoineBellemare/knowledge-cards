@@ -901,10 +901,15 @@
       let buffer = '';
       let result = null;
       
+      console.log("[SSE] Starting stream read...");
+      
       while (true) {
         const { done, value } = await reader.read();
         
-        if (done) break;
+        if (done) {
+          console.log("[SSE] Stream ended");
+          break;
+        }
         
         buffer += decoder.decode(value, { stream: true });
         
@@ -916,6 +921,7 @@
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+              console.log("[SSE] Received:", data);
               
               if (data.type === 'keepalive') {
                 continue;

@@ -74,13 +74,38 @@ def bullet_list(items: List[str], style) -> ListFlowable:
 
 
 def infer_title_from_card(card: Dict[str, Any]) -> str:
-    """Extract paper title, preferring schema.metadata.title over citation.title."""
+    """Extract paper title, preferring schema.metadata.title over citation.title.
+    For meta-cards, generate a descriptive title."""
     # First try schema.metadata.title (the actual paper title)
     schema = card.get("schema") or {}
     if isinstance(schema, dict):
         metadata = schema.get("metadata") or {}
-        if isinstance(metadata, dict) and metadata.get("title"):
-            return str(metadata["title"])
+        if isinstance(metadata, dict):
+            # Check if this is a meta-card (has papers_covered or similar)
+            papers_covered = metadata.get("papers_covered") or metadata.get("papers_analyzed")
+            if papers_covered:
+                # This is a meta-card - generate descriptive title
+                if isinstance(papers_covered, list):
+                    n_papers = len(papers_covered)
+                    return f"Meta-Analysis: Synthesis of {n_papers} Papers"
+                elif isinstance(papers_covered, (int, str)):
+                    return f"Meta-Analysis: Cross-Paper Synthesis"
+            
+            # Regular card - use title
+            if metadata.get("title"):
+                return str(metadata["title"])
+    
+    # Check if root level has meta-card indicators (card without schema wrapper)
+    root_metadata = card.get("metadata") or {}
+    if isinstance(root_metadata, dict):
+        papers_covered = root_metadata.get("papers_covered") or root_metadata.get("papers_analyzed")
+        if papers_covered:
+            if isinstance(papers_covered, list):
+                n_papers = len(papers_covered)
+                return f"Meta-Analysis: Synthesis of {n_papers} Papers"
+            return f"Meta-Analysis: Cross-Paper Synthesis"
+        if root_metadata.get("title"):
+            return str(root_metadata["title"])
     
     # Fallback to citation.title
     cit = card.get("citation") or {}
@@ -107,38 +132,57 @@ def render_citation_block(story, card, styles):
     # Try to get metadata from schema.metadata first (preferred source)
     schema = card.get("schema") or {}
     metadata = schema.get("metadata") or {} if isinstance(schema, dict) else {}
+    
+    # Also check root-level metadata (for meta-cards)
+    if not metadata or not isinstance(metadata, dict):
+        metadata = card.get("metadata") or {}
+    
     cit = card.get("citation") or {}
     
-    # Get authors - prefer schema.metadata.authors
+    # Check if this is a meta-card
+    is_meta_card = False
+    papers_covered = None
+    if isinstance(metadata, dict):
+        papers_covered = metadata.get("papers_covered") or metadata.get("papers_analyzed")
+        if papers_covered:
+            is_meta_card = True
+    
+    # Get authors - prefer schema.metadata.authors (skip for meta-cards)
     authors = ""
-    if isinstance(metadata, dict) and isinstance(metadata.get("authors"), list):
-        authors = join_list_str(metadata["authors"], sep=", ")
-    elif isinstance(cit, dict) and isinstance(cit.get("authors"), list):
-        authors = join_list_str(cit["authors"], sep=", ")
+    if not is_meta_card:
+        if isinstance(metadata, dict) and isinstance(metadata.get("authors"), list):
+            authors = join_list_str(metadata["authors"], sep=", ")
+        elif isinstance(cit, dict) and isinstance(cit.get("authors"), list):
+            authors = join_list_str(cit["authors"], sep=", ")
 
     # Build metadata line (year · venue · DOI)
     meta_parts: List[str] = []
     
-    # Year - prefer schema.metadata.year
-    year = metadata.get("year") if isinstance(metadata, dict) else None
-    if not year and isinstance(cit, dict):
-        year = cit.get("year")
-    if year:
-        meta_parts.append(str(year))
-    
-    # Venue - prefer schema.metadata.venue
-    venue = metadata.get("venue") if isinstance(metadata, dict) else None
-    if not venue and isinstance(cit, dict):
-        venue = cit.get("venue")
-    if venue:
-        meta_parts.append(str(venue))
-    
-    # DOI - prefer schema.metadata.doi
-    doi = metadata.get("doi") if isinstance(metadata, dict) else None
-    if not doi and isinstance(cit, dict):
-        doi = cit.get("doi")
-    if doi:
-        meta_parts.append(f"DOI: {doi}")
+    if is_meta_card:
+        # For meta-cards, show paper count
+        if isinstance(papers_covered, list):
+            meta_parts.append(f"Synthesizing {len(papers_covered)} papers")
+    else:
+        # Year - prefer schema.metadata.year
+        year = metadata.get("year") if isinstance(metadata, dict) else None
+        if not year and isinstance(cit, dict):
+            year = cit.get("year")
+        if year:
+            meta_parts.append(str(year))
+        
+        # Venue - prefer schema.metadata.venue
+        venue = metadata.get("venue") if isinstance(metadata, dict) else None
+        if not venue and isinstance(cit, dict):
+            venue = cit.get("venue")
+        if venue:
+            meta_parts.append(str(venue))
+        
+        # DOI - prefer schema.metadata.doi
+        doi = metadata.get("doi") if isinstance(metadata, dict) else None
+        if not doi and isinstance(cit, dict):
+            doi = cit.get("doi")
+        if doi:
+            meta_parts.append(f"DOI: {doi}")
 
     meta = " · ".join(meta_parts) if meta_parts else ""
 
@@ -148,6 +192,31 @@ def render_citation_block(story, card, styles):
         story.append(Paragraph(xml_escape(authors), styles["Italic"]))
     if meta:
         story.append(Paragraph(xml_escape(meta), styles["Small"]))
+    
+    # For meta-cards, list the papers covered
+    if is_meta_card and isinstance(papers_covered, list) and len(papers_covered) > 0:
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("Papers Included:", styles["Heading2"]))
+        for paper in papers_covered[:10]:  # Limit to first 10
+            if isinstance(paper, dict):
+                paper_title = paper.get("title", "Untitled")
+                paper_authors = paper.get("authors", [])
+                paper_year = paper.get("year", "")
+                if isinstance(paper_authors, list):
+                    paper_authors = ", ".join(str(a) for a in paper_authors[:3])
+                    if len(paper.get("authors", [])) > 3:
+                        paper_authors += " et al."
+                paper_info = f"• {paper_title}"
+                if paper_authors:
+                    paper_info += f" ({paper_authors}"
+                    if paper_year:
+                        paper_info += f", {paper_year}"
+                    paper_info += ")"
+                elif paper_year:
+                    paper_info += f" ({paper_year})"
+                story.append(Paragraph(xml_escape(paper_info), styles["Small"]))
+            elif isinstance(paper, str):
+                story.append(Paragraph(xml_escape(f"• {paper}"), styles["Small"]))
 
     # Optional keywords - prefer schema.metadata.keywords
     keywords = metadata.get("keywords") if isinstance(metadata, dict) else None
