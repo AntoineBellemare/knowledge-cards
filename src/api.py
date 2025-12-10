@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from generate_card_UI import generate_schema
@@ -101,6 +102,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static assets (images, favicon, etc.)
+app.mount("/assets", StaticFiles(directory=BASE_DIR / "assets"), name="assets")
+
+# Serve the frontend at root
+@app.get("/")
+async def serve_frontend():
+    return FileResponse(BASE_DIR / "index.html")
 
 
 @app.post("/save_template")
