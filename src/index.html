@@ -935,13 +935,21 @@
               <span class="text-accentPurple mr-2">2.</span> Choose Visualization Style
             </h2>
             
-            <div class="grid md:grid-cols-2 gap-3" id="viz-mode-grid">
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3" id="viz-mode-grid">
               <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-selected-cyan transition-all hover:scale-[1.02] shadow-lg card-hover" data-value="schematic">
                 <div class="flex items-center gap-3 mb-2">
                   <span class="text-xl">📐</span>
                   <span class="font-medium text-sm text-slate-200">Precise Schematic</span>
                 </div>
                 <p class="text-xs text-slate-400">Technical diagram showing key concepts, relationships, and hierarchies with clean geometric forms.</p>
+              </div>
+              
+              <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="traditional">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xl">🗂️</span>
+                  <span class="font-medium text-sm text-slate-200">Traditional Schematic</span>
+                </div>
+                <p class="text-xs text-slate-400">Nested boxes with hierarchical structure, color-coded domains, and flowchart-style connections.</p>
               </div>
               
               <div class="viz-mode-option cursor-pointer p-4 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="intuitive">
@@ -2431,7 +2439,7 @@
             o.classList.remove('viz-selected-cyan', 'viz-selected-purple', 'viz-selected-pink', 'viz-selected-green');
             o.classList.add('viz-unselected');
           });
-          const colors = { schematic: 'cyan', intuitive: 'purple', network: 'pink', infographic: 'green' };
+          const colors = { schematic: 'cyan', traditional: 'cyan', intuitive: 'purple', network: 'pink', infographic: 'green' };
           const color = colors[opt.dataset.value] || 'cyan';
           opt.classList.remove('viz-unselected');
           opt.classList.add(`viz-selected-${color}`);
@@ -3165,6 +3173,51 @@ STYLE REQUIREMENTS:
 - Light or gradient background that complements the color scheme
 - Inspired by modern data visualization and concept mapping aesthetics`;
           break;
+        
+        case 'traditional':
+          prompt = `Create a RESEARCH SYNTHESIS DIAGRAM using nested rectangular boxes and hierarchical structure, inspired by traditional academic flowcharts.
+
+${contentBlock}${focusNote}
+
+DESIGN STRUCTURE (follow this layout precisely):
+- TITLE BAR at top: "RESEARCH SYNTHESIS: [main topic]" in bold dark text on light background
+- Divide the diagram into 2-3 MAJOR DOMAIN SECTIONS (large colored rectangular regions side by side)
+- Each domain section has:
+  * A header bar with domain name (e.g., "BIOLOGICAL SYSTEMS", "COGNITIVE SCIENCE")
+  * Nested boxes inside showing sub-concepts and their relationships
+  * Multiple levels of nesting (boxes within boxes within boxes)
+- CENTER SECTION: "KEY FINDINGS & SYNTHESIS" connecting the domains
+- KEY FINDING callout boxes with rounded corners highlighting important discoveries
+- Arrows connecting boxes across domains showing relationships
+
+COLOR CODING:
+- Use DISTINCT PASTEL COLORS for each major domain (e.g., light blue, light orange/peach, light green, light yellow)
+- Darker borders on boxes
+- White or light gray background
+- Dark text for readability
+- Thick colored arrows for major connections, thin arrows for minor ones
+
+BOX HIERARCHY:
+- Level 1: Large domain containers with colored headers
+- Level 2: Major concept boxes inside domains
+- Level 3: Sub-concept boxes nested within
+- Level 4: Specific details or items as smallest boxes
+
+TEXT REQUIREMENTS:
+- ALL boxes must have clear, readable labels
+- Use ALL CAPS for domain headers
+- Mixed case for concept labels
+- Include brief descriptive text in key boxes
+- Add a LEGEND at bottom explaining box colors and arrow types
+
+STYLE:
+- Clean, professional academic diagram style
+- Reminiscent of systems diagrams, UML, or organizational charts
+- Rectangular/rounded rectangular boxes only (no circles or organic shapes)
+- Grid-aligned, structured layout
+- High contrast for readability
+- Suitable for printing in an academic paper`;
+          break;
           
         case 'intuitive':
           prompt = `Create an artistic, metaphorical visualization with embedded text representing ONLY the specific content below.
@@ -3701,6 +3754,48 @@ STYLE REQUIREMENTS:
 - Soft shadows and depth for visual interest
 - Group concepts by theme using subtle background regions
 - Clean composition with breathing room between elements`;
+          break;
+        
+        case 'traditional':
+          stylePrompt = `Create a RESEARCH SYNTHESIS DIAGRAM using nested rectangular boxes and hierarchical structure.
+
+${analysis}
+
+DESIGN STRUCTURE:
+- TITLE BAR at top: "RESEARCH SYNTHESIS: [derive from themes]" in bold dark text
+- Organize by THEMES as major DOMAIN SECTIONS (large colored rectangular containers)
+- Use HIERARCHY to create nesting:
+  * FOUNDATIONAL concepts: appear in center "KEY FINDINGS & SYNTHESIS" section
+  * PRIMARY concepts: major boxes within domain sections
+  * SECONDARY concepts: nested boxes within primary boxes
+- Show ALL RELATIONSHIPS as labeled arrows connecting boxes
+- DYNAMICS (loops, cycles) shown as circular arrow flows
+
+COLOR CODING:
+- Each THEME gets a distinct PASTEL COLOR (light blue, light orange, light green, light yellow)
+- FOUNDATIONAL concepts in highlighted callout boxes
+- Darker borders, light fills
+- White/light gray background
+
+BOX HIERARCHY (nested structure):
+- Level 1: Theme-based domain containers with colored headers
+- Level 2: PRIMARY concept boxes inside domains
+- Level 3: SECONDARY concept boxes nested within
+- Level 4: Specific details as smallest boxes
+
+TEXT REQUIREMENTS:
+- ALL concepts must have clear, readable labels
+- ALL CAPS for theme/domain headers
+- Include concept descriptions in boxes
+- Relationship labels on arrows
+- LEGEND at bottom explaining colors and arrow types
+
+STYLE:
+- Clean, professional academic diagram
+- Rectangular/rounded rectangular boxes only
+- Grid-aligned, structured layout
+- High contrast for readability
+- Like a UML diagram or systems architecture chart`;
           break;
           
         case 'intuitive':
