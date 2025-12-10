@@ -383,12 +383,171 @@ async def delete_papers_folder(folder_name: str):
     return {"ok": True, "deleted": folder_name}
 
 
+# ---------- Text Generation Endpoint (for preprocessing) ----------
+
+class TextRequest(BaseModel):
+    apiKey: str
+    prompt: str
+    model: str = "gemini-2.5-flash"
+
+
+@app.post("/generate_text")
+async def generate_text(req: TextRequest):
+    """Generate text using Google AI API (for LLM preprocessing)."""
+    import httpx
+    
+    api_key = req.apiKey
+    prompt = req.prompt
+    model = req.model
+    
+    print(f"[TEXT] Model: {model}")
+    print(f"[TEXT] Prompt length: {len(prompt)} chars")
+    
+    if not api_key:
+        return {"success": False, "error": "API key required"}
+    if not prompt:
+        return {"success": False, "error": "Prompt required"}
+    
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 4000
+                }
+            }
+            
+            response = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+            
+            print(f"[TEXT] Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", f"API error: {response.status_code}")
+                except:
+                    error_msg = f"API error {response.status_code}: {response.text[:300]}"
+                return {"success": False, "error": error_msg}
+            
+            result = response.json()
+            candidates = result.get("candidates", [])
+            
+            if not candidates:
+                return {"success": False, "error": "No response generated"}
+            
+            text_content = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            
+            if not text_content:
+                return {"success": False, "error": "Empty response"}
+            
+            print(f"[TEXT] Generated {len(text_content)} chars")
+            return {"success": True, "analysis": text_content}
+            
+    except Exception as e:
+        print(f"[TEXT] Error: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # ---------- Vision Generation Endpoint ----------
+
+def calculate_image_cost(model: str, prompt_tokens: int, output_tokens: int, thoughts_tokens: int, resolution: str = "1024x1024") -> dict:
+    """Calculate estimated cost based on model and token usage."""
+    
+    # Pricing per 1M tokens (as of Dec 2025)
+    # Gemini 3 Pro Image: images are billed as output tokens
+    # - 1K/2K (up to 2048px): 1120 tokens per image = $0.134 at $120/1M
+    # - 4K (up to 4096px): 2000 tokens per image = $0.24 at $120/1M
+    
+    pricing = {
+        "gemini-2.5-flash-image": {
+            "input": 0.30,      # $0.30 / 1M tokens
+            "output": 2.50,     # $2.50 / 1M tokens (text)
+            "image_1k": 0.039,  # $0.039 per image (1290 tokens at $30/1M)
+            "image_2k": 0.039,
+            "image_4k": 0.039,  # Same price for flash
+        },
+        "gemini-2.0-flash": {
+            "input": 0.10,
+            "output": 0.40,
+            "image_1k": 0.039,
+            "image_2k": 0.039,
+            "image_4k": 0.039,
+        },
+        "gemini-3-pro-image-preview": {
+            "input": 2.00,       # $2.00 / 1M tokens
+            "output": 12.00,     # $12.00 / 1M tokens (includes thinking)
+            "image_1k": 0.134,   # 1120 tokens at $120/1M
+            "image_2k": 0.134,   # Same as 1K
+            "image_4k": 0.24,    # 2000 tokens at $120/1M
+        },
+        "nano-banana-pro-preview": {  # Same as gemini-3-pro-image-preview
+            "input": 2.00,
+            "output": 12.00,
+            "image_1k": 0.134,
+            "image_2k": 0.134,
+            "image_4k": 0.24,
+        },
+        "imagen-4.0-generate-001": {
+            "image_1k": 0.04,
+            "image_2k": 0.04,
+            "image_4k": 0.04,
+        },
+        "imagen-4.0-fast-generate-001": {
+            "image_1k": 0.02,
+            "image_2k": 0.02,
+            "image_4k": 0.02,
+        },
+        "imagen-4.0-ultra-generate-001": {
+            "image_1k": 0.06,
+            "image_2k": 0.06,
+            "image_4k": 0.06,
+        },
+        "imagen-3.0-generate-002": {
+            "image_1k": 0.03,
+            "image_2k": 0.03,
+            "image_4k": 0.03,
+        },
+    }
+    
+    # Get pricing for model (default to gemini-2.5-flash-image pricing)
+    model_pricing = pricing.get(model, pricing["gemini-2.5-flash-image"])
+    
+    # Determine image price based on resolution
+    if "4096" in resolution or "4k" in resolution.lower():
+        image_cost = model_pricing.get("image_4k", 0.039)
+        res_label = "4K"
+    elif "2048" in resolution or "2k" in resolution.lower():
+        image_cost = model_pricing.get("image_2k", 0.039)
+        res_label = "2K"
+    else:
+        image_cost = model_pricing.get("image_1k", 0.039)
+        res_label = "1K"
+    
+    # Calculate costs
+    input_cost = (prompt_tokens / 1_000_000) * model_pricing.get("input", 0)
+    output_cost = ((output_tokens + thoughts_tokens) / 1_000_000) * model_pricing.get("output", 0)
+    
+    total_cost = input_cost + output_cost + image_cost
+    
+    return {
+        "input_cost": round(input_cost, 6),
+        "output_cost": round(output_cost, 6),
+        "image_cost": round(image_cost, 6),
+        "total_cost": round(total_cost, 6),
+        "resolution": res_label,
+        "model": model,
+        "currency": "USD"
+    }
+
 
 class VisionRequest(BaseModel):
     apiKey: str
     prompt: str
     model: str = "gemini-2.5-flash-image"
+    resolution: str = "1024x1024"  # "1024x1024", "2048x2048", "4096x4096"
 
 
 @app.post("/generate_vision")
@@ -399,8 +558,10 @@ async def generate_vision(req: VisionRequest):
     api_key = req.apiKey
     prompt = req.prompt
     model = req.model
+    resolution = req.resolution
     
     print(f"[VISION] Model: {model}")
+    print(f"[VISION] Resolution: {resolution}")
     print(f"[VISION] Prompt length: {len(prompt)} chars")
     print(f"[VISION] Prompt preview: {prompt[:200]}...")
     
@@ -419,11 +580,18 @@ async def generate_vision(req: VisionRequest):
                 print(f"[VISION] URL: {url}")
                 
                 actual_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:predict?key={api_key}"
+                
+                # Map resolution to Imagen imageSize parameter
+                imagen_size = "1K"  # default
+                if "2048" in resolution or "2k" in resolution.lower():
+                    imagen_size = "2K"
+                
                 payload = {
                     "instances": [{"prompt": prompt}],
                     "parameters": {
                         "sampleCount": 1,
-                        "aspectRatio": "1:1",
+                        "aspectRatio": "16:9",  # Match the aspect ratio you like
+                        "imageSize": imagen_size,
                         "personGeneration": "DONT_ALLOW"
                     }
                 }
@@ -457,8 +625,23 @@ async def generate_vision(req: VisionRequest):
                     print(f"[VISION] Prediction[0] keys: {predictions[0].keys()}")
                     return {"success": False, "error": "No image data in Imagen response"}
                 
+                # Imagen doesn't return token counts, just calculate image cost
+                cost_info = calculate_image_cost(model, 0, 0, 0, resolution)
+                
                 print(f"[VISION] SUCCESS - Got image, mime: {mime_type}, size: {len(image_base64)} chars")
-                return {"success": True, "imageData": f"data:{mime_type};base64,{image_base64}"}
+                print(f"[VISION] Estimated cost: ${cost_info['total_cost']:.4f}")
+                
+                return {
+                    "success": True, 
+                    "imageData": f"data:{mime_type};base64,{image_base64}",
+                    "usage": {
+                        "promptTokens": 0,
+                        "outputTokens": 0,
+                        "thoughtsTokens": 0,
+                        "totalTokens": 0,
+                    },
+                    "cost": cost_info
+                }
             
             # Gemini models use generateContent method
             else:
@@ -467,13 +650,30 @@ async def generate_vision(req: VisionRequest):
                 print(f"[VISION] URL: {url}")
                 
                 actual_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                
+                # Build generation config
+                gen_config = {
+                    "response_modalities": ["TEXT", "IMAGE"]
+                }
+                
+                # Add image_config for Gemini 3 Pro Image models (supports aspect_ratio and image_size)
+                if "gemini-3" in model or "nano-banana" in model:
+                    image_size = "1K"
+                    if "4096" in resolution or "4k" in resolution.lower():
+                        image_size = "4K"
+                    elif "2048" in resolution or "2k" in resolution.lower():
+                        image_size = "2K"
+                    
+                    gen_config["image_config"] = {
+                        "aspect_ratio": "16:9",
+                        "image_size": image_size
+                    }
+                
                 payload = {
                     "contents": [{
                         "parts": [{"text": f"Generate an image: {prompt}"}]
                     }],
-                    "generationConfig": {
-                        "responseModalities": ["TEXT", "IMAGE"]
-                    }
+                    "generation_config": gen_config
                 }
                 print(f"[VISION] Payload: {json.dumps(payload, indent=2)[:500]}")
                 
@@ -521,8 +721,31 @@ async def generate_vision(req: VisionRequest):
                     print(f"[VISION] inlineData keys: {image_part.keys()}")
                     return {"success": False, "error": "No image data in response"}
                 
+                # Extract usage metadata for cost calculation
+                usage = result.get("usageMetadata", {})
+                prompt_tokens = usage.get("promptTokenCount", 0)
+                output_tokens = usage.get("candidatesTokenCount", 0)
+                thoughts_tokens = usage.get("thoughtsTokenCount", 0)
+                total_tokens = usage.get("totalTokenCount", 0)
+                
+                # Calculate estimated cost based on model and resolution
+                cost_info = calculate_image_cost(model, prompt_tokens, output_tokens, thoughts_tokens, resolution)
+                
                 print(f"[VISION] SUCCESS - Got image, mime: {mime_type}, size: {len(image_base64)} chars")
-                return {"success": True, "imageData": f"data:{mime_type};base64,{image_base64}"}
+                print(f"[VISION] Usage - prompt: {prompt_tokens}, output: {output_tokens}, thoughts: {thoughts_tokens}, total: {total_tokens}")
+                print(f"[VISION] Estimated cost: ${cost_info['total_cost']:.4f} (resolution: {cost_info['resolution']})")
+                
+                return {
+                    "success": True, 
+                    "imageData": f"data:{mime_type};base64,{image_base64}",
+                    "usage": {
+                        "promptTokens": prompt_tokens,
+                        "outputTokens": output_tokens,
+                        "thoughtsTokens": thoughts_tokens,
+                        "totalTokens": total_tokens,
+                    },
+                    "cost": cost_info
+                }
             
     except httpx.TimeoutException:
         return {"success": False, "error": "Request timed out (120s). Try again."}
