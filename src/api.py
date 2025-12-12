@@ -972,8 +972,24 @@ async def generate_vision(req: VisionRequest):
     if not prompt:
         return {"success": False, "error": "Prompt required"}
     
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+    # Longer timeout for image generation (can take 2-3 minutes for high-quality models)
+    # Use longer timeout for higher quality models
+    if "ultra" in model.lower():
+        timeout_seconds = 300.0  # 5 minutes for ultra quality
+    elif "4.0-generate" in model or "gemini-2" in model:
+        timeout_seconds = 180.0  # 3 minutes for standard quality
+    else:
+        timeout_seconds = 120.0  # 2 minutes for fast models
+    
+    max_retries = 2
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                print(f"[VISION] Retry attempt {attempt + 1}/{max_retries}")
+            
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             
             # Imagen models use predict method
             if model.startswith("imagen"):
@@ -1149,10 +1165,23 @@ async def generate_vision(req: VisionRequest):
                     "cost": cost_info
                 }
             
-    except httpx.TimeoutException:
-        return {"success": False, "error": "Request timed out (120s). Try again."}
-    except Exception as e:
-        return {"success": False, "error": f"{type(e).__name__}: {str(e)}"}
+        except httpx.TimeoutException as e:
+            last_error = f"Request timed out after {int(timeout_seconds)}s"
+            print(f"[VISION] Timeout on attempt {attempt + 1}: {last_error}")
+            if attempt < max_retries - 1:
+                print(f"[VISION] Will retry...")
+                continue
+        except httpx.ConnectError as e:
+            last_error = f"Connection error: {str(e)}"
+            print(f"[VISION] Connection error on attempt {attempt + 1}: {last_error}")
+            if attempt < max_retries - 1:
+                continue
+        except Exception as e:
+            # Don't retry on other errors (API errors, etc.)
+            return {"success": False, "error": f"{type(e).__name__}: {str(e)}"}
+    
+    # All retries exhausted
+    return {"success": False, "error": f"{last_error}. Please try again or use a faster model."}
 
 
 if __name__ == "__main__":
