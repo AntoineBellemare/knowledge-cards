@@ -2039,7 +2039,7 @@
     async function loadMyTemplates() {
       myTemplates = [];
       
-      // Try database first if user is logged in
+      // Load from database only if user is logged in
       if (currentUser?.id) {
         try {
           const res = await fetch(`${API_BASE}/db/templates?user_id=${currentUser.id}&include_public=false&include_system=false`);
@@ -2055,27 +2055,6 @@
         } catch (e) {
           console.warn("[TEMPLATES] Failed to load from DB:", e);
         }
-      }
-      
-      // Also load from legacy file API
-      try {
-        const res = await fetch(`${API_BASE}/list_templates`);
-        if (res.ok) {
-          const data = await res.json();
-          const fileTemplates = (data.templates || []).map(t => ({
-            ...t,
-            source: 'file'
-          }));
-          // Merge, avoiding duplicates by name
-          const existingNames = new Set(myTemplates.map(t => t.name.toLowerCase()));
-          fileTemplates.forEach(t => {
-            if (!existingNames.has(t.name.toLowerCase())) {
-              myTemplates.push(t);
-            }
-          });
-        }
-      } catch (e) {
-        console.warn("[TEMPLATES] Failed to load file templates:", e);
       }
       
       // Keep legacy templates array in sync
