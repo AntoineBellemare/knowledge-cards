@@ -736,6 +736,17 @@ def list_meta_cards(collection_id: int, db: Session = Depends(get_db)):
     return meta_cards
 
 
+@router.get("/collections/{collection_id}/metacard", response_model=MetaCardResponse)
+def get_metacard(collection_id: int, db: Session = Depends(get_db)):
+    """Get the primary meta card for a collection."""
+    meta_card = db.query(MetaCard).filter(
+        MetaCard.collection_id == collection_id
+    ).first()
+    if not meta_card:
+        raise HTTPException(status_code=404, detail="No meta card found for this collection")
+    return meta_card
+
+
 # ============================================================
 # Helper Functions
 # ============================================================

@@ -28,6 +28,89 @@ RESULTS_DIR = ROOT_DIR / "results"
 CARDS_DIR = Path("../cards")
 CARDS_DIR.mkdir(exist_ok=True)
 
+
+def save_run_to_database(
+    user_id: int,
+    template_id: Optional[int],
+    template_name: str,
+    papers_folder: str,
+    model_used: str,
+    jsonl_path: Path
+) -> Optional[int]:
+    """
+    Save a completed run to the database as a Collection with Cards and MetaCard.
+    Returns the collection_id if successful.
+    """
+    from database import SessionLocal
+    from models import Collection, Card, MetaCard
+    
+    db = SessionLocal()
+    try:
+        # Create collection
+        collection = Collection(
+            user_id=user_id,
+            name=f"{template_name} - {papers_folder}",
+            template_id=template_id,
+            papers_folder=papers_folder,
+            model_used=model_used,
+            is_public=False
+        )
+        db.add(collection)
+        db.commit()
+        db.refresh(collection)
+        
+        # Read JSONL and save individual cards
+        jsonl_file = Path(jsonl_path)
+        if jsonl_file.exists():
+            with open(jsonl_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            card_data = json.loads(line)
+                            # Extract title from metadata or filename
+                            title = "Unknown"
+                            if "metadata" in card_data and "title" in card_data["metadata"]:
+                                title = card_data["metadata"]["title"]
+                            elif "source_pdf" in card_data:
+                                title = card_data["source_pdf"].replace('.pdf', '')
+                            
+                            card = Card(
+                                collection_id=collection.id,
+                                source_pdf=card_data.get("source_pdf", ""),
+                                title=title,
+                                content=card_data
+                            )
+                            db.add(card)
+                        except json.JSONDecodeError:
+                            continue
+        
+        # Check for meta card file
+        meta_json_path = jsonl_file.parent / (jsonl_file.stem.replace('.jsonl', '') + '__meta.json')
+        if not meta_json_path.exists():
+            # Try alternate naming
+            base = jsonl_file.stem
+            meta_json_path = jsonl_file.parent / f"{base}__meta.json"
+        
+        if meta_json_path.exists():
+            with open(meta_json_path, 'r', encoding='utf-8') as f:
+                meta_data = json.load(f)
+                meta_card = MetaCard(
+                    collection_id=collection.id,
+                    synthesis=meta_data
+                )
+                db.add(meta_card)
+        
+        db.commit()
+        print(f"[DB] Saved collection {collection.id} with cards to database")
+        return collection.id
+        
+    except Exception as e:
+        db.rollback()
+        print(f"[DB] Error saving to database: {e}")
+        raise
+    finally:
+        db.close()
+
 class SaveTemplateRequest(BaseModel):
     id: str
     name: str
@@ -217,10 +300,42 @@ def list_papers_folders() -> PapersFoldersResponse:
 
 
 @app.get("/run_gemini_stream")
-async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optional[str] = None):
+async def run_gemini_stream(
+    papers_subdir: str, 
+    schema_name: Optional[str] = None, 
+    template_id: Optional[int] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None
+):
     """
     SSE endpoint for real-time progress during card generation.
+    Use either schema_name (file-based) or template_id (database-based).
+    If user_id is provided, saves the collection to the database.
     """
+    # If template_id is provided, fetch schema from database
+    schema_data = None
+    template_name = schema_name
+    db_template_id = template_id
+    
+    if template_id:
+        from database import SessionLocal
+        from models import Template
+        db = SessionLocal()
+        try:
+            template = db.query(Template).filter(Template.id == template_id).first()
+            if template:
+                schema_data = template.schema
+                template_name = template.name
+            else:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=404, content={"detail": "Template not found"})
+        finally:
+            db.close()
+    
+    if not schema_name and not template_id:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"detail": "Either schema_name or template_id is required"})
+    
     async def event_generator():
         import queue
         import threading
@@ -240,10 +355,11 @@ async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optiona
         def run_task():
             try:
                 result = run_gemini_cards_with_progress(
-                    schema_name=schema_name,
+                    schema_name=template_name,
                     papers_folder=papers_subdir,
                     model=model,
                     progress_callback=progress_callback,
+                    schema_data=schema_data,  # Pass schema directly if from DB
                 )
                 result_holder["result"] = result
             except Exception as e:
@@ -283,7 +399,22 @@ async def run_gemini_stream(schema_name: str, papers_subdir: str, model: Optiona
                 except ValueError:
                     return f"results/{p.name}"
             
-            yield f"data: {json.dumps({'type': 'complete', 'jsonl': to_rel(jsonl_path), 'csv': to_rel(csv_path), 'pdf': to_rel(pdf_path), 'schema_name': schema_name, 'papers_folder': papers_subdir})}\n\n"
+            # Save to database if user is logged in
+            collection_id = None
+            if user_id:
+                try:
+                    collection_id = save_run_to_database(
+                        user_id=user_id,
+                        template_id=db_template_id,
+                        template_name=template_name,
+                        papers_folder=papers_subdir,
+                        model_used=model or "gemini-2.5-flash-lite",
+                        jsonl_path=jsonl_path
+                    )
+                except Exception as e:
+                    print(f"[DB] Failed to save collection: {e}")
+            
+            yield f"data: {json.dumps({'type': 'complete', 'jsonl': to_rel(jsonl_path), 'csv': to_rel(csv_path), 'pdf': to_rel(pdf_path), 'schema_name': template_name, 'papers_folder': papers_subdir, 'collection_id': collection_id})}\n\n"
     
     return StreamingResponse(
         event_generator(),

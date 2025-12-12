@@ -957,15 +957,15 @@
         </div>
 
         <!-- Download Results Section -->
-        <div class="card-pink rounded-xl p-5 space-y-4">
-          <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-200 section-header-pink flex items-center gap-2">
+        <div class="card-pink rounded-xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
               <svg class="w-4 h-4 text-accentPink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
               </svg>
-              Download Results
+              Past Runs
             </h2>
-            <button id="btn-refresh-results" class="text-xs text-accentPink hover:text-white font-mono flex items-center gap-1 transition-colors">
+            <button id="btn-refresh-results" class="text-xs text-accentPink hover:text-white font-mono flex items-center gap-1">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
@@ -973,8 +973,8 @@
             </button>
           </div>
           
-          <div id="results-list" class="text-xs font-mono text-slate-400">
-            <p>Click "Refresh" to load available result files.</p>
+          <div id="results-list" class="text-xs font-mono text-slate-400 max-h-64 overflow-y-auto">
+            <p class="text-slate-500">Run a pipeline to generate results.</p>
           </div>
         </div>
     </div>
@@ -1877,8 +1877,18 @@
     }
 
     // SSE-based streaming API for real-time progress using fetch (works cross-origin)
-    async function apiRunGeminiWithProgress(schemaName, papersSubdir, model, onProgress) {
-      const url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaName)}&papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
+    async function apiRunGeminiWithProgress(schemaValue, papersSubdir, model, onProgress) {
+      // schemaValue can be "db:123" for database templates or "schema_name" for file-based
+      let url;
+      const baseParams = `papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
+      const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
+      
+      if (schemaValue.startsWith('db:')) {
+        const templateId = schemaValue.substring(3);
+        url = `${API_BASE}/run_gemini_stream?template_id=${encodeURIComponent(templateId)}&${baseParams}${userParam}`;
+      } else {
+        url = `${API_BASE}/run_gemini_stream?schema_name=${encodeURIComponent(schemaValue)}&${baseParams}${userParam}`;
+      }
       
       const response = await fetch(url, {
         method: 'GET',
@@ -3012,24 +3022,72 @@
     // ----- Runs & reports -----
     async function refreshRunOptions() {
       try {
-        const [schemasRes, foldersRes] = await Promise.all([
-          apiListSchemas(),
-          apiListPapersFolders(),
-        ]);
+        const foldersRes = await apiListPapersFolders();
 
         const schemaSelect = $("run-schema");
         const folderSelect = $("run-folder");
 
-        // clear, keep first placeholder option
-        schemaSelect.options.length = 1;
-        folderSelect.options.length = 1;
+        // Clear everything except the first placeholder option
+        while (schemaSelect.children.length > 1) {
+          schemaSelect.removeChild(schemaSelect.lastChild);
+        }
+        while (folderSelect.children.length > 1) {
+          folderSelect.removeChild(folderSelect.lastChild);
+        }
 
-        schemasRes.schemas.forEach((name) => {
-          const opt = document.createElement("option");
-          opt.value = name;
-          opt.textContent = name;
-          schemaSelect.appendChild(opt);
-        });
+        // Load templates from database with sections
+        let myDbTemplates = [];
+        let communityTemplates = [];
+        
+        // Fetch user's templates
+        if (currentUser?.id) {
+          try {
+            const res = await fetch(`${API_BASE}/db/templates?user_id=${currentUser.id}&include_public=false&include_system=false`);
+            if (res.ok) {
+              myDbTemplates = await res.json();
+            }
+          } catch (e) {
+            console.warn("[RUNS] Failed to load user templates:", e);
+          }
+        }
+        
+        // Fetch community templates
+        try {
+          const res = await fetch(`${API_BASE}/db/templates/collective?sort_by=popular&limit=50`);
+          if (res.ok) {
+            communityTemplates = await res.json();
+          }
+        } catch (e) {
+          console.warn("[RUNS] Failed to load community templates:", e);
+        }
+        
+        // Add My Templates section
+        if (myDbTemplates.length > 0) {
+          const myGroup = document.createElement("optgroup");
+          myGroup.label = "📁 My Templates";
+          myDbTemplates.forEach((t) => {
+            const opt = document.createElement("option");
+            opt.value = `db:${t.id}`;
+            opt.textContent = t.name;
+            opt.dataset.schema = JSON.stringify(t.schema);
+            myGroup.appendChild(opt);
+          });
+          schemaSelect.appendChild(myGroup);
+        }
+        
+        // Add Community Templates section
+        if (communityTemplates.length > 0) {
+          const communityGroup = document.createElement("optgroup");
+          communityGroup.label = "🌐 Community Templates";
+          communityTemplates.forEach((t) => {
+            const opt = document.createElement("option");
+            opt.value = `db:${t.id}`;
+            opt.textContent = `${t.name}${t.owner_name ? ` (by ${t.owner_name})` : ''}`;
+            opt.dataset.schema = JSON.stringify(t.schema);
+            communityGroup.appendChild(opt);
+          });
+          schemaSelect.appendChild(communityGroup);
+        }
 
         // Filter folders to only show current session's folders (online) or all (local)
         foldersRes.folders.forEach((folder) => {
@@ -3096,8 +3154,17 @@
                     overallPercent = 10;
                     break;
                 case 'cards':
-                    // Cards processing is 10-70% of overall progress
+                    // Cards processing is 10-70% of overall progress (but chunk/reduce give more detail)
                     overallPercent = 10 + Math.round((current / total) * 60);
+                    break;
+                case 'chunk':
+                    // Chunk processing within a PDF - show finer progress
+                    // Keep it within the "cards" range (10-70%), but show chunk detail
+                    overallPercent = 10 + Math.round((current / total) * 50);
+                    break;
+                case 'reduce':
+                    // Reduction phase - near end of card processing (55-70%)
+                    overallPercent = 55 + Math.round((current / total) * 15);
                     break;
                 case 'saving':
                     // Saving is 70-85%
@@ -3201,6 +3268,7 @@
       $("nav-runs").onclick = () => {
         setView("runs");
         refreshRunOptions();
+        refreshResultsList();
       };
       $("nav-visualize").onclick = () => {
         setView("visualize");
@@ -3467,50 +3535,97 @@
         }
         
         if (results.length === 0) {
-          container.innerHTML = '<span class="text-slate-500">No result files found. Run the pipeline to generate results.</span>';
+          container.innerHTML = '<span class="text-slate-500">No results yet. Run a pipeline to generate cards.</span>';
           return;
         }
         
-        // Group by base name (e.g., cards_networks__plant_cognition)
-        const grouped = {};
+        // Group files by run (extract template and papers folder from filename)
+        // Format: cards_{template}__{papers}.{ext} or cards_{template}__{papers}__meta.{ext}
+        const runs = {};
         results.forEach(f => {
-          // Extract base name without extension
-          const baseName = f.name.replace(/\.(jsonl|csv|pdf|json)$/, '');
-          if (!grouped[baseName]) grouped[baseName] = [];
-          grouped[baseName].push(f);
+          // Parse filename to extract template and papers
+          const match = f.name.match(/^cards_(.+?)__(.+?)(?:__meta|_summary)?\.(\w+)$/);
+          if (match) {
+            const [, template, papers, ext] = match;
+            const runKey = `${template}__${papers}`;
+            if (!runs[runKey]) {
+              runs[runKey] = {
+                template: template.replace(/_/g, ' '),
+                papers: papers.replace(/_/g, ' '),
+                files: {}
+              };
+            }
+            // Categorize file
+            if (f.name.includes('__meta.')) {
+              runs[runKey].files[`meta_${ext}`] = f;
+            } else if (f.name.includes('_summary.')) {
+              runs[runKey].files[`summary_${ext}`] = f;
+            } else {
+              runs[runKey].files[ext] = f;
+            }
+          }
         });
         
-        let html = '<div class="space-y-3">';
-        Object.keys(grouped).sort().reverse().forEach(baseName => {
-          const files = grouped[baseName];
-          // Display name without session prefix
-          const displayName = isLocal ? baseName : baseName.replace(new RegExp(`_${SESSION_ID}_`), '_');
+        const runKeys = Object.keys(runs).sort().reverse();
+        
+        if (runKeys.length === 0) {
+          container.innerHTML = '<span class="text-slate-500">No valid result files found.</span>';
+          return;
+        }
+        
+        let html = '<div class="space-y-2">';
+        runKeys.forEach((key, idx) => {
+          const run = runs[key];
+          const files = run.files;
+          const fileCount = Object.keys(files).length;
+          
           html += `
-            <div class="p-3 rounded-lg bg-slate-900/50 border border-slate-700">
-              <div class="text-accentCyan mb-2 text-xs truncate" title="${displayName}">${displayName}</div>
-              <div class="flex flex-wrap gap-2">
+            <details class="group" ${idx === 0 ? 'open' : ''}>
+              <summary class="flex items-center justify-between p-2 rounded-lg bg-slate-900/50 hover:bg-slate-800/50 cursor-pointer">
+                <div class="flex-1 min-w-0">
+                  <span class="text-accentCyan font-medium truncate block">${run.template}</span>
+                  <span class="text-slate-500 text-[10px]">📁 ${run.papers}</span>
+                </div>
+                <span class="text-slate-500 text-[10px] ml-2">${fileCount} files</span>
+              </summary>
+              <div class="mt-1 ml-2 pl-2 border-l border-slate-700 flex flex-wrap gap-1 py-1">
           `;
-          files.forEach(f => {
-            const icon = f.type === 'pdf' ? '📑' : f.type === 'csv' ? '📊' : f.type === 'jsonl' ? '📄' : '📁';
-            const sizeKB = (f.size / 1024).toFixed(1);
-            html += `
-              <a href="${API_BASE}/download/results/${encodeURIComponent(f.name)}" 
-                 target="_blank"
-                 class="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors">
-                <span>${icon}</span>
-                <span class="uppercase">${f.type}</span>
-                <span class="text-slate-500">(${sizeKB}KB)</span>
-              </a>
-            `;
+          
+          // Order: Cards, Meta, Summary
+          const order = ['jsonl', 'meta_json', 'meta_jsonl', 'pdf', 'meta_pdf', 'summary_csv', 'csv'];
+          const labels = {
+            'jsonl': '📄 Cards',
+            'meta_json': '🧠 Meta',
+            'meta_jsonl': '🧠 Meta',
+            'pdf': '📑 PDF',
+            'meta_pdf': '📑 Meta PDF',
+            'summary_csv': '📊 Summary',
+            'csv': '📊 CSV'
+          };
+          
+          order.forEach(type => {
+            if (files[type]) {
+              const f = files[type];
+              const sizeKB = (f.size / 1024).toFixed(0);
+              const label = labels[type] || type.toUpperCase();
+              html += `
+                <a href="${API_BASE}/download/results/${encodeURIComponent(f.name)}" 
+                   target="_blank" title="${f.name}"
+                   class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-accentPink/20 text-slate-400 hover:text-accentPink text-[10px]">
+                  ${label} <span class="text-slate-600">${sizeKB}k</span>
+                </a>
+              `;
+            }
           });
-          html += '</div></div>';
+          
+          html += '</div></details>';
         });
         html += '</div>';
         
         container.innerHTML = html;
       } catch (err) {
         console.error("Failed to load results:", err);
-        container.innerHTML = `<span class="text-red-400">Error loading results: ${err.message}</span>`;
+        container.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
       }
     }
 
@@ -3527,6 +3642,20 @@
       individualSelect.innerHTML = '<option value="">Loading...</option>';
       
       try {
+        // Load from database collections first (if user is logged in)
+        let dbCollections = [];
+        if (currentUser?.id) {
+          try {
+            const res = await fetch(`${API_BASE}/db/collections?user_id=${currentUser.id}&include_public=true`);
+            if (res.ok) {
+              dbCollections = await res.json();
+            }
+          } catch (e) {
+            console.warn("[VIZ] Failed to load DB collections:", e);
+          }
+        }
+        
+        // Load from local files
         const data = await apiListResults();
         let results = data.results || [];
         
@@ -3538,8 +3667,7 @@
           results = results.filter(f => f.name.includes(SESSION_ID + '_'));
         }
         
-        // Separate meta-cards (end with __meta.json or __meta.jsonl) from individual cards
-        // Be specific to avoid matching 'metal' or other words containing 'meta'
+        // Separate meta-cards from individual cards
         let metaCards = results.filter(f => 
           f.name.endsWith('__meta.json') || f.name.endsWith('__meta.jsonl') || f.name.endsWith('_meta.json') || f.name.endsWith('_meta.jsonl')
         );
@@ -3549,7 +3677,6 @@
         metaCards = metaCards.filter(f => {
           const baseName = f.name.replace('.jsonl', '').replace('.json', '');
           if (metaCardBases.has(baseName)) {
-            // Skip .jsonl if we already have the .json version
             return f.name.endsWith('.json');
           }
           metaCardBases.add(baseName);
@@ -3560,36 +3687,77 @@
           !f.name.includes('_meta.json') && !f.name.includes('_meta.jsonl') && f.name.endsWith('.jsonl')
         );
         
-        // Populate meta-cards dropdown
+        // Populate meta-cards dropdown with sections
         metaSelect.innerHTML = '<option value="">-- Select a meta-card --</option>';
-        metaCards.forEach(f => {
-          const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
-          const opt = document.createElement('option');
-          opt.value = f.name;
-          opt.textContent = displayName.replace(/_/g, ' ').replace('.json', '').replace('.jsonl', '');
-          metaSelect.appendChild(opt);
-        });
         
-        // Populate individual files dropdown
-        individualSelect.innerHTML = '<option value="">-- Select result file --</option>';
-        individualFiles.forEach(f => {
-          const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
-          const opt = document.createElement('option');
-          opt.value = f.name;
-          opt.textContent = displayName.replace(/_/g, ' ').replace('.jsonl', '');
-          individualSelect.appendChild(opt);
-        });
-        
-        if (metaCards.length === 0) {
-          metaSelect.innerHTML = '<option value="">No meta-cards found</option>';
+        // Add database collections section
+        if (dbCollections.length > 0) {
+          const dbGroup = document.createElement('optgroup');
+          dbGroup.label = '💾 Saved Collections';
+          dbCollections.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = `db:${c.id}`;
+            opt.textContent = c.name;
+            dbGroup.appendChild(opt);
+          });
+          metaSelect.appendChild(dbGroup);
         }
-        if (individualFiles.length === 0) {
-          individualSelect.innerHTML = '<option value="">No result files found</option>';
+        
+        // Add local files section
+        if (metaCards.length > 0) {
+          const localGroup = document.createElement('optgroup');
+          localGroup.label = '📁 Local Files';
+          metaCards.forEach(f => {
+            const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
+            const opt = document.createElement('option');
+            opt.value = `file:${f.name}`;
+            opt.textContent = displayName.replace(/_/g, ' ').replace('.json', '').replace('.jsonl', '').replace('cards ', '');
+            localGroup.appendChild(opt);
+          });
+          metaSelect.appendChild(localGroup);
+        }
+        
+        if (dbCollections.length === 0 && metaCards.length === 0) {
+          metaSelect.innerHTML = '<option value="">No meta-cards found - run a pipeline first</option>';
+        }
+        
+        // Populate individual files dropdown with sections
+        individualSelect.innerHTML = '<option value="">-- Select result file --</option>';
+        
+        // Add database collections for individual cards
+        if (dbCollections.length > 0) {
+          const dbGroup = document.createElement('optgroup');
+          dbGroup.label = '💾 Saved Collections';
+          dbCollections.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = `db:${c.id}`;
+            opt.textContent = c.name;
+            dbGroup.appendChild(opt);
+          });
+          individualSelect.appendChild(dbGroup);
+        }
+        
+        // Add local files
+        if (individualFiles.length > 0) {
+          const localGroup = document.createElement('optgroup');
+          localGroup.label = '📁 Local Files';
+          individualFiles.forEach(f => {
+            const displayName = isLocal ? f.name : f.name.replace(new RegExp(`_${SESSION_ID}_`), '_');
+            const opt = document.createElement('option');
+            opt.value = `file:${f.name}`;
+            opt.textContent = displayName.replace(/_/g, ' ').replace('.jsonl', '').replace('cards ', '');
+            localGroup.appendChild(opt);
+          });
+          individualSelect.appendChild(localGroup);
+        }
+        
+        if (dbCollections.length === 0 && individualFiles.length === 0) {
+          individualSelect.innerHTML = '<option value="">No result files found - run a pipeline first</option>';
         }
       } catch (err) {
         console.error("Failed to load result files:", err);
-        metaSelect.innerHTML = '<option value="">Error loading files</option>';
-        individualSelect.innerHTML = '<option value="">Error loading files</option>';
+        metaSelect.innerHTML = `<option value="">Error: ${err.message || 'Failed to load'}</option>`;
+        individualSelect.innerHTML = `<option value="">Error: ${err.message || 'Failed to load'}</option>`;
       }
     }
 
@@ -3597,29 +3765,47 @@
     let loadedPapersData = [];
     
     async function loadIndividualCards() {
-      const filename = $("viz-individual-files").value;
+      const value = $("viz-individual-files").value;
       const papersPanel = $("viz-papers-panel");
       const papersList = $("viz-papers-list");
       
-      if (!filename) {
+      if (!value) {
         papersPanel.classList.add("hidden");
         loadedPapersData = [];
         return;
       }
       
       try {
-        const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
-        const text = await response.text();
+        let cards = [];
         
-        // Parse JSONL - each line is a separate card
-        const cards = text.trim().split('\n').map((line, i) => {
-          try {
-            const card = JSON.parse(line);
-            const schema = card.schema || card;
-            const title = schema.metadata?.title || `Paper ${i + 1}`;
-            return { index: i, card: schema, title };
-          } catch { return null; }
-        }).filter(Boolean);
+        if (value.startsWith('db:')) {
+          // Load from database
+          const collectionId = value.substring(3);
+          const res = await fetch(`${API_BASE}/db/collections/${collectionId}/cards`);
+          if (res.ok) {
+            const dbCards = await res.json();
+            cards = dbCards.map((c, i) => ({
+              index: i,
+              card: c.content,
+              title: c.title || `Paper ${i + 1}`
+            }));
+          }
+        } else {
+          // Load from file (strip 'file:' prefix if present)
+          const filename = value.startsWith('file:') ? value.substring(5) : value;
+          const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
+          const text = await response.text();
+          
+          // Parse JSONL - each line is a separate card
+          cards = text.trim().split('\n').map((line, i) => {
+            try {
+              const card = JSON.parse(line);
+              const schema = card.schema || card;
+              const title = schema.metadata?.title || `Paper ${i + 1}`;
+              return { index: i, card: schema, title };
+            } catch { return null; }
+          }).filter(Boolean);
+        }
         
         loadedPapersData = cards;
         
@@ -3710,48 +3896,78 @@
     }
 
     async function loadCardForVisualization() {
-      const metaFile = $("viz-meta-cards").value;
-      const individualFile = $("viz-individual-files").value;
+      const metaValue = $("viz-meta-cards").value;
+      const individualValue = $("viz-individual-files").value;
       const preview = $("viz-card-preview");
       const categoriesPanel = $("viz-categories-panel");
       const categoriesList = $("viz-categories-list");
       
-      let filename = metaFile || individualFile;
-      let isMeta = !!metaFile;
+      let value = metaValue || individualValue;
+      let isMeta = !!metaValue;
       
-      if (!filename) {
+      if (!value) {
         alert("Please select a meta-card or an individual card first");
         return;
       }
       
       try {
-        const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
-        const text = await response.text();
-        
         let card;
-        if (isMeta) {
-          // Load meta-card (could be JSON or JSONL with single entry)
-          if (filename.endsWith('.jsonl')) {
-            const lines = text.trim().split('\n');
-            card = JSON.parse(lines[0]);
+        
+        if (value.startsWith('db:')) {
+          // Load from database
+          const collectionId = value.substring(3);
+          if (isMeta) {
+            // Load meta-card from collection
+            const res = await fetch(`${API_BASE}/db/collections/${collectionId}/metacard`);
+            if (res.ok) {
+              const metaCard = await res.json();
+              card = metaCard.synthesis;
+            } else {
+              throw new Error("No meta-card found for this collection");
+            }
           } else {
-            card = JSON.parse(text);
+            // Load selected papers from collection and merge
+            const selectedIndices = getSelectedPaperIndices();
+            
+            if (selectedIndices.length === 0) {
+              alert("Please select at least one paper");
+              return;
+            }
+            
+            if (selectedIndices.length === 1) {
+              card = loadedPapersData[selectedIndices[0]].card;
+            } else {
+              card = mergeSelectedPapers(selectedIndices);
+            }
           }
         } else {
-          // Load selected papers from JSONL and merge them
-          const selectedIndices = getSelectedPaperIndices();
+          // Load from file (strip 'file:' prefix if present)
+          const filename = value.startsWith('file:') ? value.substring(5) : value;
+          const response = await fetch(`${API_BASE}/download/results/${encodeURIComponent(filename)}`);
+          const text = await response.text();
           
-          if (selectedIndices.length === 0) {
-            alert("Please select at least one paper");
-            return;
-          }
-          
-          if (selectedIndices.length === 1) {
-            // Single paper - use directly
-            card = loadedPapersData[selectedIndices[0]].card;
+          if (isMeta) {
+            // Load meta-card (could be JSON or JSONL with single entry)
+            if (filename.endsWith('.jsonl')) {
+              const lines = text.trim().split('\n');
+              card = JSON.parse(lines[0]);
+            } else {
+              card = JSON.parse(text);
+            }
           } else {
-            // Multiple papers - merge their data
-            card = mergeSelectedPapers(selectedIndices);
+            // Load selected papers from JSONL and merge them
+            const selectedIndices = getSelectedPaperIndices();
+            
+            if (selectedIndices.length === 0) {
+              alert("Please select at least one paper");
+              return;
+            }
+            
+            if (selectedIndices.length === 1) {
+              card = loadedPapersData[selectedIndices[0]].card;
+            } else {
+              card = mergeSelectedPapers(selectedIndices);
+            }
           }
         }
         
