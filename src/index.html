@@ -4198,13 +4198,19 @@
       const categoriesList = $("viz-categories-list");
       const selectAllCheckbox = $("viz-select-all-categories");
       
+      // Keys to exclude from visualization categories
+      const excludeKeys = ['citation', '_file', '_template_question', 'metadata'];
+      
       // Get top-level categories that have content
       const categories = Object.keys(card).filter(key => {
         // Skip internal/meta keys
         if (key.startsWith('_')) return false;
+        // Skip excluded keys (citation, metadata, etc.)
+        if (excludeKeys.includes(key)) return false;
         // Skip empty values
         const val = card[key];
         if (val === null || val === undefined) return false;
+        if (typeof val === 'string' && val.trim() === '') return false;
         if (typeof val === 'object' && Object.keys(val).length === 0) return false;
         if (Array.isArray(val) && val.length === 0) return false;
         return true;

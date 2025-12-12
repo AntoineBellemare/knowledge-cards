@@ -87,10 +87,12 @@ META_SYSTEM_PROMPT = (
     "- For the metadata section:\n"
     "  * Include a brief overview of the corpus in a field such as 'papers_covered' or similar, "
     "    listing title, authors, year, venue when available.\n"
-    "- For 'citations_or_quotes' arrays (which may appear in many subsections):\n"
-    "  * Prefer to keep them concise by selecting only a few (max ~5 per section) representative "
-    "    snippets from across schemas.\n"
-    "  * If you cannot safely select, you may leave them as empty arrays [].\n"
+    "- CRITICAL FOR 'citations_or_quotes' arrays:\n"
+    "  * EVERY quote MUST include a paper reference in parentheses at the end.\n"
+    "  * Format: \"Quote text here\" (Author et al., Year) or \"Quote text\" (Paper Title)\n"
+    "  * Example: \"Consciousness may be substrate-independent\" (Tononi & Koch, 2015)\n"
+    "  * Select only a few (max ~5 per section) representative snippets from across schemas.\n"
+    "  * If you cannot safely attribute a quote to a specific paper, do not include it.\n"
     "- DO NOT introduce new top-level sections unless they are clearly needed to capture "
     "  cross-paper patterns. Prefer to reuse and fill the existing structure.\n"
     "- Be concise but informative. The meta-card should be usable as a high-level overview "
@@ -111,6 +113,10 @@ SPECULATION_SYSTEM_PROMPT = (
     "- Think across DISCIPLINARY BOUNDARIES - what would a philosopher, artist, or scientist from another field notice?\n"
     "- Consider EMERGENT PROPERTIES - what new understanding arises from the combination that isn't in any single paper?\n"
     "- Be BOLD but HONEST about the speculative nature of your insights.\n\n"
+    "CITATION REQUIREMENTS:\n"
+    "- ALWAYS reference which papers your insights draw from using (Author, Year) or (Paper Title) format.\n"
+    "- When combining ideas from multiple papers, cite all relevant sources.\n"
+    "- Example: \"Building on X's notion of embodied cognition (Smith, 2020) and Y's network theory (Jones, 2018)...\"\n\n"
     "OUTPUT FORMAT:\n"
     "Return a JSON object with the 'speculative_synthesis' structure as specified.\n"
     "Each insight should be substantive (2-4 sentences) and reference which papers/ideas it draws from.\n"
@@ -241,14 +247,33 @@ def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
     Build the user prompt that passes all schemas to Gemini.
     """
     schemas_str = json.dumps(schemas, ensure_ascii=False, indent=2)
+    
+    # Extract paper references for the prompt
+    paper_refs = []
+    for schema in schemas:
+        metadata = schema.get("metadata", {})
+        citation = schema.get("citation", {})
+        title = metadata.get("title") or citation.get("title") or "Unknown"
+        authors = metadata.get("authors") or citation.get("authors") or []
+        year = metadata.get("year") or citation.get("year") or ""
+        if isinstance(authors, list) and authors:
+            first_author = authors[0].split(",")[0].split()[-1] if authors[0] else "Unknown"
+            paper_refs.append(f"- {title} ({first_author}, {year})" if year else f"- {title} ({first_author})")
+        else:
+            paper_refs.append(f"- {title}")
+    
+    papers_list = "\n".join(paper_refs) if paper_refs else "Multiple papers"
 
     prompt = (
         "You are given multiple completed reading card SCHEMAS in JSON format. "
         "Each schema corresponds to one paper and shares the same overall structure.\n\n"
+        f"PAPERS IN THIS CORPUS:\n{papers_list}\n\n"
         "SCHEMAS JSON:\n"
         "```json\n"
         f"{schemas_str}\n"
         "```\n\n"
+        "IMPORTANT: For ALL 'citations_or_quotes' fields, every quote MUST include a paper reference "
+        "in parentheses, e.g., \"Quote text\" (Author, Year). Use the paper list above for references.\n\n"
         "Please synthesise these into a SINGLE 'meta-card' JSON as described in the system prompt."
     )
     return prompt
