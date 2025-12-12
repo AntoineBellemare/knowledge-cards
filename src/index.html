@@ -973,7 +973,7 @@
             </button>
           </div>
           
-          <div id="collections-list" class="text-xs font-mono text-slate-400 max-h-64 overflow-y-auto">
+          <div id="collections-list" class="text-xs font-mono text-slate-400 max-h-96 overflow-y-auto">
             <p class="text-slate-500">Login to see your saved collections.</p>
           </div>
         </div>
@@ -1883,7 +1883,80 @@
       return data; // {ok, jsonl, csv}
     }
 
+    // Job-based API for long-running card generation (no timeout issues)
+    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, model, onProgress) {
+      // schemaValue can be "db:123" for database templates or "schema_name" for file-based
+      let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
+      const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
+      
+      if (schemaValue.startsWith('db:')) {
+        const templateId = schemaValue.substring(3);
+        url += `&template_id=${encodeURIComponent(templateId)}${userParam}`;
+      } else {
+        url += `&schema_name=${encodeURIComponent(schemaValue)}${userParam}`;
+      }
+      
+      // Start the job
+      const startRes = await fetch(url, { method: 'POST' });
+      if (!startRes.ok) {
+        const err = await startRes.json();
+        throw new Error(err.detail || `Server error: ${startRes.status}`);
+      }
+      
+      const { job_id } = await startRes.json();
+      console.log("[JOB] Started job:", job_id);
+      
+      // Poll for status
+      const pollInterval = 2000; // 2 seconds
+      const maxPollTime = 60 * 60 * 1000; // 1 hour max
+      const startTime = Date.now();
+      
+      while (true) {
+        if (Date.now() - startTime > maxPollTime) {
+          throw new Error("Job timed out after 1 hour. Check your collections for results.");
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        const statusRes = await fetch(`${API_BASE}/jobs/${job_id}`);
+        if (!statusRes.ok) {
+          throw new Error("Failed to check job status");
+        }
+        
+        const status = await statusRes.json();
+        console.log("[JOB] Status:", status);
+        
+        // Update progress
+        if (onProgress && status.stage) {
+          onProgress({
+            stage: status.stage,
+            current: status.progress,
+            total: 100,
+            message: status.message,
+            percent: status.progress
+          });
+        }
+        
+        if (status.status === 'complete') {
+          return {
+            ok: true,
+            schema_name: status.result.schema_name,
+            papers_folder: status.result.papers_folder,
+            jsonl: status.result.jsonl,
+            csv: status.result.csv,
+            pdf: status.result.pdf,
+            collection_id: status.result.collection_id,
+          };
+        }
+        
+        if (status.status === 'error') {
+          throw new Error(status.error || 'Job failed');
+        }
+      }
+    }
+
     // SSE-based streaming API for real-time progress using fetch (works cross-origin)
+    // Kept as fallback but job-based is preferred for reliability
     async function apiRunGeminiWithProgress(schemaValue, papersSubdir, model, onProgress) {
       // schemaValue can be "db:123" for database templates or "schema_name" for file-based
       let url;
@@ -1915,6 +1988,9 @@
       
       console.log("[SSE] Starting stream read...");
       
+      let lastActivityTime = Date.now();
+      const TIMEOUT_MS = 180000; // 3 minute timeout for long operations
+      
       while (true) {
         const { done, value } = await reader.read();
         
@@ -1923,6 +1999,7 @@
           break;
         }
         
+        lastActivityTime = Date.now(); // Reset timeout on any data
         buffer += decoder.decode(value, { stream: true });
         
         // Process complete SSE messages
@@ -1970,7 +2047,7 @@
       }
       
       if (!result) {
-        throw new Error("Stream ended without completion");
+        throw new Error("Connection lost before completion. The server may still be processing. Check your collections in a few minutes, or try with fewer papers.");
       }
       
       return result;
@@ -3194,7 +3271,8 @@
         }
 
         try {
-            const res = await apiRunGeminiWithProgress(schemaName, folder, model, handleProgress);
+            // Use job-based API for reliability (no timeout issues)
+            const res = await apiRunGeminiWithJobs(schemaName, folder, model, handleProgress);
             
             // Complete progress
             progressBar.style.width = "100%";
@@ -3237,7 +3315,11 @@
         } catch (err) {
             progressContainer.classList.add("hidden");
             console.error(err);
-            statusEl.innerHTML = '<span class="text-red-400">✗ Error building cards: ' + err.message + '</span>';
+            
+            // Provide helpful message for errors
+            let errorMsg = err.message;
+            
+            statusEl.innerHTML = '<span class="text-red-400">✗ ' + errorMsg + '</span>';
             outEl.textContent = "";
         } finally {
             // Reset button state
@@ -3549,61 +3631,85 @@
           return;
         }
         
-        let html = '<div class="space-y-2">';
+        let html = '<div class="space-y-3">';
         collections.forEach(c => {
           const date = new Date(c.created_at).toLocaleDateString();
           const cardCount = c.card_count || 0;
           const metaCount = c.meta_card_count || 0;
           const safeName = c.name.replace(/'/g, "\\'");
+          const templateName = c.name || 'Unknown Template';
+          const folderName = c.papers_folder || 'Unknown Folder';
           
           html += `
-            <div class="p-2 rounded-lg bg-slate-900/50 hover:bg-slate-800/50 group">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-accentCyan font-medium truncate">${c.name}</span>
+            <div class="p-3 rounded-lg bg-slate-900/50 hover:bg-slate-800/50 group border border-slate-800 hover:border-slate-700 transition-colors">
+              <!-- Header: Template & Folder -->
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-accentPurple text-[10px] uppercase tracking-wide font-semibold">Template</span>
+                    <span class="text-white font-medium truncate">${templateName}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-accentCyan text-[10px] uppercase tracking-wide font-semibold">Folder</span>
+                    <span class="text-slate-300 text-sm truncate">${folderName}</span>
+                  </div>
+                </div>
                 <button onclick="deleteCollection(${c.id}, '${safeName}')" 
-                        class="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
+                        class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300 ml-2"
                         title="Delete collection">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                   </svg>
                 </button>
               </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500 text-[10px]">📅 ${date} · 📄 ${cardCount} cards · 📊 ${metaCount} meta</span>
-                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <!-- Cards Downloads -->
-                  <div class="flex items-center gap-0.5 border-r border-slate-700 pr-1 mr-1">
-                    <span class="text-slate-600 text-[9px]">Cards:</span>
-                    <a href="${API_BASE}/db/collections/${c.id}/download/cards.json" 
-                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Download cards JSON">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                      </svg>
-                    </a>
-                    <a href="${API_BASE}/db/collections/${c.id}/download/cards.pdf" 
-                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentPink" title="Download cards PDF">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
-                      </svg>
-                    </a>
-                  </div>
-                  <!-- Meta Card Downloads -->
+              
+              <!-- Stats Row -->
+              <div class="flex items-center gap-3 text-[10px] text-slate-500 mb-3">
+                <span>📅 ${date}</span>
+                <span>📄 ${cardCount} cards</span>
+                <span>📊 ${metaCount} meta</span>
+              </div>
+              
+              <!-- Download Buttons -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- Cards PDF - Big Button -->
+                <a href="${API_BASE}/db/collections/${c.id}/download/cards.pdf" 
+                   class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accentPink/20 hover:bg-accentPink/30 text-accentPink border border-accentPink/30 transition-colors text-xs font-medium"
+                   title="Download cards as PDF">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                  </svg>
+                  Cards PDF
+                </a>
+                
+                <!-- Meta PDF - Big Button (if exists) -->
+                ${metaCount > 0 ? `
+                <a href="${API_BASE}/db/collections/${c.id}/download/metacard.pdf" 
+                   class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accentCyan/20 hover:bg-accentCyan/30 text-accentCyan border border-accentCyan/30 transition-colors text-xs font-medium"
+                   title="Download meta-card as PDF">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                  </svg>
+                  Meta PDF
+                </a>
+                ` : ''}
+                
+                <!-- JSON Downloads - Small -->
+                <div class="flex items-center gap-1 ml-auto opacity-60 hover:opacity-100 transition-opacity">
+                  <span class="text-slate-600 text-[9px]">JSON:</span>
+                  <a href="${API_BASE}/db/collections/${c.id}/download/cards.json" 
+                     class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Cards JSON">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                  </a>
                   ${metaCount > 0 ? `
-                  <div class="flex items-center gap-0.5">
-                    <span class="text-slate-600 text-[9px]">Meta:</span>
-                    <a href="${API_BASE}/db/collections/${c.id}/download/metacard.json" 
-                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Download meta-card JSON">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                      </svg>
-                    </a>
-                    <a href="${API_BASE}/db/collections/${c.id}/download/metacard.pdf" 
-                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentPink" title="Download meta-card PDF">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
-                      </svg>
-                    </a>
-                  </div>
+                  <a href="${API_BASE}/db/collections/${c.id}/download/metacard.json" 
+                     class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Meta JSON">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                  </a>
                   ` : ''}
                 </div>
               </div>

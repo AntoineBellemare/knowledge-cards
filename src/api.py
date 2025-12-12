@@ -6,13 +6,16 @@ import os
 import json
 import shutil
 import asyncio
+import uuid
+import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Load .env file before other imports
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +30,77 @@ PAPERS_DIR = ROOT_DIR / "papers"
 RESULTS_DIR = ROOT_DIR / "results"
 CARDS_DIR = Path("../cards")
 CARDS_DIR.mkdir(exist_ok=True)
+
+# ---------- Background Job System ----------
+# In-memory job store (use Redis in production for multi-process)
+jobs: Dict[str, Dict[str, Any]] = {}
+jobs_lock = threading.Lock()
+
+def cleanup_old_jobs():
+    """Remove jobs older than 1 hour."""
+    cutoff = datetime.now() - timedelta(hours=1)
+    with jobs_lock:
+        old_jobs = [jid for jid, job in jobs.items() 
+                    if job.get('created_at', datetime.now()) < cutoff]
+        for jid in old_jobs:
+            del jobs[jid]
+
+def create_job(user_id: Optional[int], template_name: str, papers_folder: str) -> str:
+    """Create a new job and return its ID."""
+    job_id = str(uuid.uuid4())[:8]  # Short ID for easier debugging
+    with jobs_lock:
+        jobs[job_id] = {
+            'id': job_id,
+            'status': 'pending',
+            'progress': 0,
+            'stage': 'init',
+            'message': 'Initializing...',
+            'user_id': user_id,
+            'template_name': template_name,
+            'papers_folder': papers_folder,
+            'result': None,
+            'error': None,
+            'created_at': datetime.now(),
+        }
+    return job_id
+
+def update_job_progress(job_id: str, stage: str, current: int, total: int, message: str):
+    """Update job progress."""
+    with jobs_lock:
+        if job_id in jobs:
+            percent = int((current / total) * 100) if total > 0 else 0
+            jobs[job_id].update({
+                'stage': stage,
+                'progress': percent,
+                'message': message,
+            })
+
+def complete_job(job_id: str, result: dict):
+    """Mark job as complete with results."""
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update({
+                'status': 'complete',
+                'progress': 100,
+                'stage': 'complete',
+                'message': 'Complete!',
+                'result': result,
+            })
+
+def fail_job(job_id: str, error: str):
+    """Mark job as failed."""
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update({
+                'status': 'error',
+                'error': error,
+                'message': f'Error: {error}',
+            })
+
+def get_job(job_id: str) -> Optional[dict]:
+    """Get job status."""
+    with jobs_lock:
+        return jobs.get(job_id, {}).copy() if job_id in jobs else None
 
 
 def save_run_to_database(
@@ -395,17 +469,22 @@ async def run_gemini_stream(
         thread.start()
         
         # Stream progress events
+        keepalive_counter = 0
         while True:
             try:
-                item = progress_queue.get(timeout=0.5)
+                item = progress_queue.get(timeout=0.1)  # Check more frequently
                 if item is None:
                     break
                 yield f"data: {json.dumps(item)}\n\n"
-                await asyncio.sleep(0.01)  # Small delay to help with proxy buffering
-            except queue.Empty:
-                # Send keepalive to keep connection alive and help with buffering
-                yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
                 await asyncio.sleep(0.01)
+                keepalive_counter = 0  # Reset on activity
+            except queue.Empty:
+                keepalive_counter += 1
+                # Send keepalive every ~3 seconds (30 x 0.1s) to prevent proxy timeouts
+                if keepalive_counter >= 30:
+                    yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
+                    await asyncio.sleep(0.01)
+                    keepalive_counter = 0
         
         thread.join()
         
@@ -449,6 +528,146 @@ async def run_gemini_stream(
             "X-Accel-Buffering": "no",  # Disable nginx/proxy buffering
             "Transfer-Encoding": "chunked",
         }
+    )
+
+
+# ---------- Background Job Endpoints (for long-running tasks) ----------
+
+class StartJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+
+class JobStatusResponse(BaseModel):
+    id: str
+    status: str
+    progress: int
+    stage: str
+    message: str
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+@app.post("/jobs/start", response_model=StartJobResponse)
+def start_build_job(
+    papers_subdir: str,
+    schema_name: Optional[str] = None,
+    template_id: Optional[int] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Start a background job for card generation.
+    Returns immediately with a job_id that can be polled for status.
+    """
+    # Cleanup old jobs periodically
+    cleanup_old_jobs()
+    
+    # Fetch template if needed
+    schema_data = None
+    template_name = schema_name
+    template_question = None
+    db_template_id = template_id
+    
+    if template_id:
+        from database import SessionLocal
+        from models import Template
+        db = SessionLocal()
+        try:
+            template = db.query(Template).filter(Template.id == template_id).first()
+            if template:
+                schema_data = template.schema
+                template_name = template.name
+                template_question = template.question
+            else:
+                raise HTTPException(status_code=404, detail="Template not found")
+        finally:
+            db.close()
+    
+    if not schema_name and not template_id:
+        raise HTTPException(status_code=400, detail="Either schema_name or template_id is required")
+    
+    # Create job
+    job_id = create_job(user_id, template_name, papers_subdir)
+    
+    # Define the background task
+    def run_job():
+        try:
+            def progress_callback(stage: str, current: int, total: int, message: str):
+                update_job_progress(job_id, stage, current, total, message)
+            
+            jsonl_path, csv_path, pdf_path = run_gemini_cards_with_progress(
+                schema_name=template_name,
+                papers_folder=papers_subdir,
+                model=model,
+                progress_callback=progress_callback,
+                schema_data=schema_data,
+                template_question=template_question,
+            )
+            
+            def to_rel(p: Path) -> str:
+                p = Path(p).resolve()
+                try:
+                    return str(p.relative_to(ROOT_DIR))
+                except ValueError:
+                    return f"results/{p.name}"
+            
+            # Save to database if user is logged in
+            collection_id = None
+            if user_id:
+                try:
+                    collection_id = save_run_to_database(
+                        user_id=user_id,
+                        template_id=db_template_id,
+                        template_name=template_name,
+                        papers_folder=papers_subdir,
+                        model_used=model or "gemini-2.5-flash-lite",
+                        jsonl_path=jsonl_path
+                    )
+                except Exception as e:
+                    print(f"[JOB {job_id}] Failed to save collection: {e}")
+            
+            complete_job(job_id, {
+                'jsonl': to_rel(jsonl_path),
+                'csv': to_rel(csv_path),
+                'pdf': to_rel(pdf_path),
+                'schema_name': template_name,
+                'papers_folder': papers_subdir,
+                'collection_id': collection_id,
+            })
+            print(f"[JOB {job_id}] Completed successfully")
+            
+        except Exception as e:
+            fail_job(job_id, str(e))
+            print(f"[JOB {job_id}] Failed: {e}")
+    
+    # Start in a background thread (not FastAPI BackgroundTasks - those wait for response)
+    thread = threading.Thread(target=run_job, daemon=True)
+    thread.start()
+    
+    return StartJobResponse(
+        job_id=job_id,
+        status="pending",
+        message="Job started. Poll /jobs/{job_id} for status."
+    )
+
+
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(job_id: str):
+    """Get the status of a background job."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return JobStatusResponse(
+        id=job['id'],
+        status=job['status'],
+        progress=job['progress'],
+        stage=job['stage'],
+        message=job['message'],
+        result=job.get('result'),
+        error=job.get('error'),
     )
 
 
