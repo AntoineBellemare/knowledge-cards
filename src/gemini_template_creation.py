@@ -347,7 +347,8 @@ MERGE RULES (VERY IMPORTANT):
 - Return FINAL JSON only.
 """
 
-def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], batch_size: int = 4, progress_callback=None) -> Dict[str, Any]:
+def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None) -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -359,14 +360,20 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     Uses smaller batch size (4) to keep prompts under ~50KB.
     """
-    def report_progress(stage, current, total, message):
-        if progress_callback:
-            progress_callback(stage, current, total, message)
-        print(f"[{stage}] {current}/{total} - {message}")
+    def report_progress(message):
+        if progress_callback and global_progress:
+            global_progress['current'] += 1
+            progress_callback(
+                "process", 
+                global_progress['current'], 
+                global_progress['total'], 
+                message
+            )
+        print(f"[REDUCE] {message}")
     
     # BASE CASE: If only 1 card, just return it (nothing to reduce)
     if len(partial_cards) == 1:
-        report_progress("reduce", 1, 1, "Single card - no reduction needed")
+        print("[REDUCE] Single card - no reduction needed")
         return partial_cards[0]
     
     # Check total size of cards to determine if we need smaller batches
@@ -374,7 +381,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     # If total is small enough (< 30KB) and few cards, reduce directly in one pass
     if len(partial_cards) <= batch_size and total_chars < 30000:
-        report_progress("reduce", 1, 1, f"Final reduction of {len(partial_cards)} cards ({total_chars:,} chars)")
+        report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
         user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
@@ -382,7 +389,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     # (2+ cards that are individually large)
     if len(partial_cards) == 2 and total_chars >= 30000:
         # Can't batch further, just try to reduce the 2 cards
-        report_progress("reduce", 1, 1, f"Reducing 2 large cards ({total_chars:,} chars)")
+        report_progress(f"{filename}: merging 2 large cards")
         user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
@@ -392,22 +399,21 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     # Recursive case: split into batches, reduce each, then reduce the results
     total_batches = (len(partial_cards) + batch_size - 1) // batch_size
-    report_progress("reduce", 0, total_batches, f"Splitting {len(partial_cards)} cards into {total_batches} batches")
+    print(f"[REDUCE] Splitting {len(partial_cards)} cards into {total_batches} batches")
     intermediate_cards = []
     
     for i in range(0, len(partial_cards), batch_size):
         batch = partial_cards[i:i + batch_size]
         batch_num = (i // batch_size) + 1
-        batch_chars = sum(len(json.dumps(c)) for c in batch)
-        report_progress("reduce", batch_num, total_batches, f"Reducing batch {batch_num}/{total_batches} ({len(batch)} cards, {batch_chars:,} chars)")
+        report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
         
         user = prompt_reduce(schema, title, filename, batch)
         intermediate = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         intermediate_cards.append(intermediate)
     
-    report_progress("reduce", total_batches, total_batches, f"Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
+    print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
-    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress)
 
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
@@ -415,16 +421,24 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
     words = sum(len(t.split()) for _, t in sections)
     return words <= MAX_INPUT_TOKENS
 
-def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None) -> Dict[str, Any]:
+def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
+                       global_progress: dict = None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
     progress_callback(stage: str, current: int, total: int, message: str)
+    global_progress: dict with 'current', 'total', 'pdf_name' for global tracking
     """
-    def report_progress(stage, current, total, message):
-        if progress_callback:
-            progress_callback(stage, current, total, message)
-        print(f"[{stage}] {current}/{total} - {message}")
+    def report_progress(message):
+        if progress_callback and global_progress:
+            global_progress['current'] += 1
+            progress_callback(
+                "process", 
+                global_progress['current'], 
+                global_progress['total'], 
+                message
+            )
+        print(f"[PROGRESS] {message}")
     
     print(f"\n[PIPELINE] ==== Processing {pdf_path.name} ====")
     title, sections = extract_pdf(pdf_path)
@@ -432,7 +446,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     print(f"[PIPELINE] {pdf_path.name}: {total_words} words across {len(sections)} sections.")
 
     if text_size_ok(sections):
-        report_progress("chunk", 1, 1, f"{pdf_path.name}: SINGLE-PASS mode")
+        report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
         user = prompt_single_pass(schema, title, pdf_path.name, full_text)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
@@ -441,17 +455,15 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
             data["citation"].setdefault("title", title)
         else:
             data["citation"] = {"title": title}
-        report_progress("chunk", 1, 1, f"{pdf_path.name}: card built (single-pass)")
         return data
 
     # map-reduce
     chunks = build_chunks(sections)
     total_chunks = len(chunks)
-    report_progress("chunk", 0, total_chunks, f"{pdf_path.name}: MAP-REDUCE mode ({total_chunks} chunks)")
     partials = []
     for idx, ch in enumerate(chunks):
-        section_preview = ch['section'][:40].replace('\n', ' ')
-        report_progress("chunk", idx + 1, total_chunks, f"{pdf_path.name}: chunk {idx+1}/{total_chunks} ({section_preview})")
+        section_preview = ch['section'][:30].replace('\n', ' ')
+        report_progress(f"{pdf_path.name}: chunk {idx+1}/{total_chunks}")
         user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
@@ -473,15 +485,14 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         print(f"[PIPELINE] {pdf_path.name}: card built via fallback single-pass.")
         return data
 
-    report_progress("reduce", 0, 1, f"{pdf_path.name}: reducing {len(partials)} partial cards")
+    report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks...")
     
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
-        report_progress("reduce", 0, 1, f"{pdf_path.name}: using hierarchical batch reduction")
-        data = reduce_in_batches(schema, title, pdf_path.name, partials, progress_callback=progress_callback)
+        data = reduce_in_batches(schema, title, pdf_path.name, partials, 
+                                  progress_callback=progress_callback, global_progress=global_progress)
     else:
         # Single-pass reduction for shorter documents
-        report_progress("reduce", 1, 1, f"{pdf_path.name}: single-pass reduction")
         user = prompt_reduce(schema, title, pdf_path.name, partials)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
@@ -765,15 +776,49 @@ def run_gemini_cards_with_progress(
     cards: List[Dict[str, Any]] = []
     rows: List[Dict[str, Any]] = []
 
-    report("loading", 0, total_pdfs, f"Found {total_pdfs} PDFs to process")
+    # Pre-scan to estimate total work units
+    report("scan", 0, total_pdfs, f"Scanning {total_pdfs} PDFs...")
+    total_work_units = 0
+    pdf_work_estimates = []
+    for pdf in pdfs:
+        try:
+            # Quick estimate: small PDFs = 1 unit, larger = estimated chunks + reduction batches
+            file_size = pdf.stat().st_size
+            # Rough estimate: ~1 chunk per 50KB, minimum 1
+            estimated_chunks = max(1, file_size // 50000)
+            # Add estimated reduction batches (for large docs: chunks/4 batches, then recursive)
+            estimated_reductions = 0
+            if estimated_chunks > 4:
+                # First level: chunks/4 batches
+                estimated_reductions = (estimated_chunks + 3) // 4
+                # Second level reduction if needed
+                if estimated_reductions > 4:
+                    estimated_reductions += (estimated_reductions + 3) // 4
+            estimated_work = estimated_chunks + estimated_reductions + 1  # +1 for final merge
+            pdf_work_estimates.append(estimated_work)
+            total_work_units += estimated_work
+        except:
+            pdf_work_estimates.append(2)
+            total_work_units += 2
+    
+    # Add work units for saving and meta-card
+    total_work_units += total_pdfs  # Reduction for each PDF
+    total_work_units += 3  # Meta-card generation
+    
+    report("scan", total_pdfs, total_pdfs, f"Estimated {total_work_units} work units")
+    
+    # Global progress tracker
+    global_progress = {'current': 0, 'total': total_work_units}
 
     for idx, pdf in enumerate(pdfs):
-        report("cards", idx + 1, total_pdfs, f"Processing: {pdf.name}")
+        report("process", global_progress['current'], total_work_units, f"Processing: {pdf.name}")
         try:
-            card = build_card_for_pdf(pdf, schema, progress_callback=progress_callback)
+            card = build_card_for_pdf(pdf, schema, progress_callback=progress_callback, global_progress=global_progress)
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
+            # Still increment progress on failure
+            global_progress['current'] += pdf_work_estimates[idx]
             continue
 
         try:
@@ -788,7 +833,8 @@ def run_gemini_cards_with_progress(
     folder_stem = Path(papers_folder).name
     base_name   = f"cards_{schema_stem}__{folder_stem}"
 
-    report("saving", 1, 4, "Saving JSONL...")
+    global_progress['current'] += 1
+    report("save", global_progress['current'], total_work_units, "Saving JSONL...")
     jsonl_path = RESULTS_DIR / f"{base_name}.jsonl"
     csv_path   = RESULTS_DIR / f"{base_name}_summary.csv"
 
@@ -799,15 +845,16 @@ def run_gemini_cards_with_progress(
                 c["_template_question"] = template_question
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
-    report("saving", 2, 4, "Saving CSV...")
+    report("save", global_progress['current'], total_work_units, "Saving CSV...")
     pd.DataFrame(rows).to_csv(csv_path, index=False)
 
-    report("saving", 3, 4, "Generating PDF report...")
+    report("save", global_progress['current'], total_work_units, "Generating PDF...")
     pdf_path = RESULTS_DIR / f"{base_name}.pdf"
     build_pdf(jsonl_path, pdf_path)
 
     # --- META-CARD ---
-    report("meta", 1, 3, "Generating meta-card with Gemini...")
+    global_progress['current'] += 1
+    report("meta", global_progress['current'], total_work_units, "Building meta-card...")
     try:
         schemas_for_meta = load_schemas_from_file(jsonl_path)
         meta_card = generate_meta_card(
@@ -819,7 +866,8 @@ def run_gemini_cards_with_progress(
         if template_question:
             meta_card["_template_question"] = template_question
 
-        report("meta", 2, 3, "Saving meta-card...")
+        global_progress['current'] += 1
+        report("meta", global_progress['current'], total_work_units, "Saving meta-card...")
         meta_json_path = RESULTS_DIR / f"{base_name}__meta.json"
         with meta_json_path.open("w", encoding="utf-8") as f:
             json.dump(meta_card, f, ensure_ascii=False, indent=2)
@@ -828,14 +876,15 @@ def run_gemini_cards_with_progress(
         with meta_jsonl_path.open("w", encoding="utf-8") as f:
             f.write(json.dumps(meta_card, ensure_ascii=False) + "\n")
 
-        report("meta", 3, 3, "Generating meta-card PDF...")
+        global_progress['current'] += 1
+        report("meta", global_progress['current'], total_work_units, "Generating meta-card PDF...")
         meta_pdf_path = RESULTS_DIR / f"{base_name}__meta.pdf"
         build_pdf(meta_jsonl_path, meta_pdf_path)
 
     except Exception as e:
         print(f"[WARN] Could not build meta-card: {e}")
 
-    report("complete", 100, 100, "All done!")
+    report("complete", total_work_units, total_work_units, "All done!")
     return jsonl_path.resolve(), csv_path.resolve(), pdf_path.resolve()
 
 

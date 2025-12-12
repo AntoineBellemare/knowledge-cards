@@ -3226,43 +3226,17 @@
 
         // Progress handler for real-time updates
         function handleProgress(data) {
-            const { stage, current, total, message, percent } = data;
+            const { stage, current, total, message } = data;
             
-            // Calculate overall progress based on stage
-            let overallPercent = 0;
-            switch (stage) {
-                case 'init':
-                    overallPercent = 5;
-                    break;
-                case 'loading':
-                    overallPercent = 10;
-                    break;
-                case 'cards':
-                    // Cards processing is 10-70% of overall progress (but chunk/reduce give more detail)
-                    overallPercent = 10 + Math.round((current / total) * 60);
-                    break;
-                case 'chunk':
-                    // Chunk processing within a PDF - show finer progress
-                    // Keep it within the "cards" range (10-70%), but show chunk detail
-                    overallPercent = 10 + Math.round((current / total) * 50);
-                    break;
-                case 'reduce':
-                    // Reduction phase - near end of card processing (55-70%)
-                    overallPercent = 55 + Math.round((current / total) * 15);
-                    break;
-                case 'saving':
-                    // Saving is 70-85%
-                    overallPercent = 70 + Math.round((current / total) * 15);
-                    break;
-                case 'meta':
-                    // Meta-card is 85-98%
-                    overallPercent = 85 + Math.round((current / total) * 13);
-                    break;
-                case 'complete':
-                    overallPercent = 100;
-                    break;
-                default:
-                    overallPercent = percent || 0;
+            // Simple global progress: current/total across all work units
+            let overallPercent = total > 0 ? Math.round((current / total) * 100) : 0;
+            
+            // Cap at 99% until complete
+            if (stage !== 'complete' && overallPercent >= 100) {
+                overallPercent = 99;
+            }
+            if (stage === 'complete') {
+                overallPercent = 100;
             }
             
             progressBar.style.width = overallPercent + "%";
