@@ -714,12 +714,14 @@ def run_gemini_cards_with_progress(
     model: Optional[str] = None,
     progress_callback=None,
     schema_data: Optional[Dict[str, Any]] = None,
+    template_question: Optional[str] = None,
 ) -> Tuple[Path, Path, Path]:
     """
     Same as run_gemini_cards but with progress callbacks for real-time updates.
     
     progress_callback(stage: str, current: int, total: int, message: str)
     schema_data: If provided, use this schema directly instead of loading from file.
+    template_question: The original question that generated the template schema.
     """
     def report(stage: str, current: int, total: int, message: str):
         if progress_callback:
@@ -792,6 +794,9 @@ def run_gemini_cards_with_progress(
 
     with jsonl_path.open("w", encoding="utf-8") as f:
         for c in cards:
+            # Add the original question to each card if available
+            if template_question:
+                c["_template_question"] = template_question
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
     report("saving", 2, 4, "Saving CSV...")
@@ -809,6 +814,10 @@ def run_gemini_cards_with_progress(
             schemas_for_meta,
             model=model or GEMINI_MODEL,
         )
+        
+        # Add the original question to the meta-card if available
+        if template_question:
+            meta_card["_template_question"] = template_question
 
         report("meta", 2, 3, "Saving meta-card...")
         meta_json_path = RESULTS_DIR / f"{base_name}__meta.json"

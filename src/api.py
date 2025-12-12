@@ -62,41 +62,59 @@ def save_run_to_database(
         # Read JSONL and save individual cards
         jsonl_file = Path(jsonl_path)
         order_idx = 0
+        print(f"[DB] Looking for JSONL file: {jsonl_file}")
+        print(f"[DB] JSONL file absolute: {jsonl_file.resolve()}")
+        print(f"[DB] JSONL file exists: {jsonl_file.exists()}")
+        
         if jsonl_file.exists():
+            print(f"[DB] JSONL file exists, reading cards...")
             with open(jsonl_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        try:
-                            card_data = json.loads(line)
-                            # Source file from _file field
-                            source_file = card_data.get("_file", "")
-                            
-                            card = Card(
-                                collection_id=collection.id,
-                                source_file=source_file,
-                                content=card_data,
-                                order_index=order_idx
-                            )
-                            db.add(card)
-                            order_idx += 1
-                        except json.JSONDecodeError:
-                            continue
+                lines = f.readlines()
+            print(f"[DB] Read {len(lines)} lines from JSONL")
+            
+            for line in lines:
+                if line.strip():
+                    try:
+                        card_data = json.loads(line)
+                        # Source file from _file field
+                        source_file = card_data.get("_file", "")
+                        
+                        card = Card(
+                            collection_id=collection.id,
+                            source_file=source_file,
+                            content=card_data,
+                            order_index=order_idx
+                        )
+                        db.add(card)
+                        order_idx += 1
+                        print(f"[DB] Added card {order_idx}: {source_file}")
+                    except json.JSONDecodeError as e:
+                        print(f"[DB] JSON decode error: {e}")
+                        continue
+        else:
+            print(f"[DB] JSONL file NOT found: {jsonl_file}")
         
         # Check for meta card file
         meta_json_path = jsonl_file.parent / (jsonl_file.stem.replace('.jsonl', '') + '__meta.json')
+        print(f"[DB] Looking for meta card: {meta_json_path}")
         if not meta_json_path.exists():
-            # Try alternate naming
+            # Try alternate naming - the stem already doesn't have .jsonl
             base = jsonl_file.stem
             meta_json_path = jsonl_file.parent / f"{base}__meta.json"
+            print(f"[DB] Trying alternate path: {meta_json_path}")
         
         if meta_json_path.exists():
+            print(f"[DB] Meta card file found, loading...")
             with open(meta_json_path, 'r', encoding='utf-8') as f:
                 meta_data = json.load(f)
                 meta_card = MetaCard(
                     collection_id=collection.id,
-                    synthesis=meta_data
+                    content=meta_data  # Fixed: was 'synthesis', should be 'content'
                 )
                 db.add(meta_card)
+                print(f"[DB] Added meta card for collection {collection.id}")
+        else:
+            print(f"[DB] Meta card file NOT found")
         
         db.commit()
         print(f"[DB] Saved collection {collection.id} with cards to database")
@@ -313,6 +331,7 @@ async def run_gemini_stream(
     # If template_id is provided, fetch schema from database
     schema_data = None
     template_name = schema_name
+    template_question = None  # The original question that generated this template
     db_template_id = template_id
     
     if template_id:
@@ -324,6 +343,7 @@ async def run_gemini_stream(
             if template:
                 schema_data = template.schema
                 template_name = template.name
+                template_question = template.question  # Get the original question
             else:
                 from fastapi.responses import JSONResponse
                 return JSONResponse(status_code=404, content={"detail": "Template not found"})
@@ -358,6 +378,7 @@ async def run_gemini_stream(
                     model=model,
                     progress_callback=progress_callback,
                     schema_data=schema_data,  # Pass schema directly if from DB
+                    template_question=template_question,  # Pass the original question
                 )
                 result_holder["result"] = result
             except Exception as e:
