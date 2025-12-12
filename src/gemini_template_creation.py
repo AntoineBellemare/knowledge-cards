@@ -312,12 +312,13 @@ RULES (VERY IMPORTANT):
 - Extract ONLY from this chunk.
 - Do NOT invent content.
 - For any field whose name contains 'citation' or 'quote':
-    * Use only short, relevant excerpts from THIS chunk (1–3 sentences, ≤300 characters).
-    * Add a location hint using the chunk_section, e.g. [chunk: {section}].
-    * Max 3 items per such field in a single partial card.
-    * Do NOT copy long reference lists or raw bibliographic entries.
+    * Extract quotes that are insightful, contain key claims, or have vivid phrasing.
+    * Max 3-4 quotes per chunk, each ≤250 characters.
+    * Add location hint: [chunk: {section}].
+    * Do NOT copy reference lists or bibliographic entries.
+- For list fields: extract relevant items from this chunk.
 - Ignore pure reference entries (author/year/journal/DOI).
-- Be concise. JSON only.
+- JSON only.
 """
 
 def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
@@ -338,11 +339,14 @@ MERGE RULES (VERY IMPORTANT):
 - Union/merge lists; deduplicate similar items.
 - Prefer more specific/quantified info when conflicts.
 - Keep methods coherent (type, data, N if present, measures).
-- findings: short bullets (≤6) reflecting the paper’s core results.
+- findings: Concise bullets (max 6) reflecting the paper's main results. Summarize related findings together.
 - For any field whose name contains 'citation' or 'quote':
-    * Merge and deduplicate quotes/citations from partial cards.
-    * Drop entries that look like plain reference lines or overly long bibliographic text.
-    * Keep at most 5 of the most informative items per field, each ≤300 characters.
+    * Keep the MOST impactful, non-redundant quotes (aim for 8-12 total for long papers).
+    * Merge or drop quotes that say essentially the same thing.
+    * Each quote should be ≤250 characters. Trim longer ones while preserving meaning.
+    * Drop generic statements, reference lines, or bibliographic text.
+    * Prioritize quotes with specific claims, data, or unique phrasing.
+- For list fields (except citations/quotes): max 6 items. Merge similar items.
 - If a field remains unknown overall, keep "" or [].
 - Return FINAL JSON only.
 """
