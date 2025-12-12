@@ -10,8 +10,12 @@ Provides endpoints for:
 from typing import Optional, List
 from datetime import datetime
 import uuid
+import json
+import tempfile
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from pydantic import BaseModel, Field
@@ -611,6 +615,18 @@ def list_collections(
         query = query.filter(Collection.is_public == True)
     
     collections = query.order_by(desc(Collection.created_at)).offset(offset).limit(limit).all()
+    
+    # Fix: Recalculate card counts for collections with stale counts
+    for c in collections:
+        if c.card_count == 0:
+            actual_card_count = len(c.cards) if c.cards else 0
+            actual_meta_count = len(c.meta_cards) if c.meta_cards else 0
+            if actual_card_count > 0 or actual_meta_count > 0:
+                c.card_count = actual_card_count
+                c.meta_card_count = actual_meta_count
+                db.add(c)
+    db.commit()
+    
     return collections
 
 
@@ -745,6 +761,139 @@ def get_metacard(collection_id: int, db: Session = Depends(get_db)):
     if not meta_card:
         raise HTTPException(status_code=404, detail="No meta card found for this collection")
     return meta_card
+
+
+# ============================================================
+# Download Endpoints
+# ============================================================
+
+@router.get("/collections/{collection_id}/download/cards.json")
+def download_cards_json(collection_id: int, db: Session = Depends(get_db)):
+    """Download all cards in a collection as JSON."""
+    collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    cards = db.query(Card).filter(
+        Card.collection_id == collection_id
+    ).order_by(Card.order_index).all()
+    
+    # Build JSON array of card contents
+    cards_data = [card.content for card in cards]
+    
+    filename = f"{collection.name.replace(' ', '_')}_cards.json"
+    json_content = json.dumps(cards_data, indent=2, ensure_ascii=False)
+    
+    return Response(
+        content=json_content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/collections/{collection_id}/download/metacard.json")
+def download_metacard_json(collection_id: int, db: Session = Depends(get_db)):
+    """Download the meta card of a collection as JSON."""
+    collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    meta_card = db.query(MetaCard).filter(
+        MetaCard.collection_id == collection_id
+    ).first()
+    
+    if not meta_card:
+        raise HTTPException(status_code=404, detail="No meta card found for this collection")
+    
+    filename = f"{collection.name.replace(' ', '_')}_metacard.json"
+    json_content = json.dumps(meta_card.content, indent=2, ensure_ascii=False)
+    
+    return Response(
+        content=json_content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/collections/{collection_id}/download/cards.pdf")
+def download_cards_pdf(collection_id: int, db: Session = Depends(get_db)):
+    """Download all cards in a collection as PDF."""
+    collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    cards = db.query(Card).filter(
+        Card.collection_id == collection_id
+    ).order_by(Card.order_index).all()
+    
+    if not cards:
+        raise HTTPException(status_code=404, detail="No cards found in this collection")
+    
+    # Import PDF generation utilities
+    try:
+        from cards_to_pdf import create_cards_pdf_from_data
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF generation not available")
+    
+    # Prepare cards data
+    cards_data = [card.content for card in cards]
+    
+    # Generate PDF in temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp_path = tmp.name
+    
+    try:
+        create_cards_pdf_from_data(cards_data, tmp_path)
+        filename = f"{collection.name.replace(' ', '_')}_cards.pdf"
+        return FileResponse(
+            tmp_path,
+            media_type="application/pdf",
+            filename=filename,
+            background=None  # Don't delete until response is sent
+        )
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@router.get("/collections/{collection_id}/download/metacard.pdf")
+def download_metacard_pdf(collection_id: int, db: Session = Depends(get_db)):
+    """Download the meta card of a collection as PDF."""
+    collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    meta_card = db.query(MetaCard).filter(
+        MetaCard.collection_id == collection_id
+    ).first()
+    
+    if not meta_card:
+        raise HTTPException(status_code=404, detail="No meta card found for this collection")
+    
+    # Import PDF generation utilities
+    try:
+        from cards_to_pdf import create_metacard_pdf_from_data
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF generation not available")
+    
+    # Generate PDF in temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp_path = tmp.name
+    
+    try:
+        create_metacard_pdf_from_data(meta_card.content, tmp_path)
+        filename = f"{collection.name.replace(' ', '_')}_metacard.pdf"
+        return FileResponse(
+            tmp_path,
+            media_type="application/pdf",
+            filename=filename,
+            background=None
+        )
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
 # ============================================================

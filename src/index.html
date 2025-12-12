@@ -956,16 +956,16 @@
         <div id="run-output" class="text-[0.75rem] font-mono text-slate-300"></div>
         </div>
 
-        <!-- Download Results Section -->
+        <!-- Collections Section (Database) -->
         <div class="card-pink rounded-xl p-4">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
               <svg class="w-4 h-4 text-accentPink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
               </svg>
-              Past Runs
+              My Collections
             </h2>
-            <button id="btn-refresh-results" class="text-xs text-accentPink hover:text-white font-mono flex items-center gap-1">
+            <button id="btn-refresh-collections" class="text-xs text-accentPink hover:text-white font-mono flex items-center gap-1">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
@@ -973,8 +973,8 @@
             </button>
           </div>
           
-          <div id="results-list" class="text-xs font-mono text-slate-400 max-h-64 overflow-y-auto">
-            <p class="text-slate-500">Run a pipeline to generate results.</p>
+          <div id="collections-list" class="text-xs font-mono text-slate-400 max-h-64 overflow-y-auto">
+            <p class="text-slate-500">Login to see your saved collections.</p>
           </div>
         </div>
     </div>
@@ -1436,6 +1436,11 @@
         // Fallback: work without database
         currentUser = null;
       }
+      
+      // Refresh collections list once user is loaded
+      if (currentUser && typeof refreshCollectionsList === 'function') {
+        refreshCollectionsList();
+      }
     }
     
     function updateUserBadge() {
@@ -1620,6 +1625,7 @@
             closeUserModal();
             templatesLoaded = false; // Reload templates for new user
             console.log("[USER] Signed in as:", currentUser.username);
+            refreshCollectionsList(); // Refresh collections after login
           } else {
             alert('Username not found. Try registering instead.');
           }
@@ -1644,6 +1650,7 @@
             closeUserModal();
             templatesLoaded = false; // Reload templates for new user
             console.log("[USER] Registered as:", currentUser.username);
+            refreshCollectionsList(); // Refresh collections after registration
           } else {
             const err = await res.json();
             alert(err.detail || 'Failed to create account');
@@ -3225,8 +3232,8 @@
               </div>
             </div>`;
             
-            // Auto-refresh results list
-            refreshResultsList();
+            // Auto-refresh collections list
+            refreshCollectionsList();
         } catch (err) {
             progressContainer.classList.add("hidden");
             console.error(err);
@@ -3268,7 +3275,7 @@
       $("nav-runs").onclick = () => {
         setView("runs");
         refreshRunOptions();
-        refreshResultsList();
+        refreshCollectionsList();
       };
       $("nav-visualize").onclick = () => {
         setView("visualize");
@@ -3303,7 +3310,7 @@
       $("btn-run-gemini").onclick = handleRunGemini;
       $("btn-refresh-folders").onclick = refreshRunOptions;
       $("btn-upload-papers").onclick = handleUploadPapers;
-      $("btn-refresh-results").onclick = refreshResultsList;
+      $("btn-refresh-collections").onclick = refreshCollectionsList;
 
       // Visualization handlers
       $("btn-load-card").onclick = loadCardForVisualization;
@@ -3520,112 +3527,121 @@
       }
     }
 
-    // ----- Results list handler -----
-    async function refreshResultsList() {
-      const container = $("results-list");
+    // ----- Collections list handler -----
+    async function refreshCollectionsList() {
+      const container = $("collections-list");
+      
+      if (!currentUser?.id) {
+        container.innerHTML = '<span class="text-slate-500">Login to see your saved collections.</span>';
+        return;
+      }
+      
       container.innerHTML = '<span class="text-slate-500">Loading...</span>';
       
       try {
-        const data = await apiListResults();
+        const res = await fetch(`${API_BASE}/db/collections?user_id=${currentUser.id}`);
+        if (!res.ok) throw new Error("Failed to load collections");
         
-        // Filter results to only show current session's files (online) or all (local)
-        let results = data.results || [];
-        if (!isLocal) {
-          results = results.filter(f => f.name.includes(SESSION_ID + '_'));
-        }
+        const collections = await res.json();
         
-        if (results.length === 0) {
-          container.innerHTML = '<span class="text-slate-500">No results yet. Run a pipeline to generate cards.</span>';
-          return;
-        }
-        
-        // Group files by run (extract template and papers folder from filename)
-        // Format: cards_{template}__{papers}.{ext} or cards_{template}__{papers}__meta.{ext}
-        const runs = {};
-        results.forEach(f => {
-          // Parse filename to extract template and papers
-          const match = f.name.match(/^cards_(.+?)__(.+?)(?:__meta|_summary)?\.(\w+)$/);
-          if (match) {
-            const [, template, papers, ext] = match;
-            const runKey = `${template}__${papers}`;
-            if (!runs[runKey]) {
-              runs[runKey] = {
-                template: template.replace(/_/g, ' '),
-                papers: papers.replace(/_/g, ' '),
-                files: {}
-              };
-            }
-            // Categorize file
-            if (f.name.includes('__meta.')) {
-              runs[runKey].files[`meta_${ext}`] = f;
-            } else if (f.name.includes('_summary.')) {
-              runs[runKey].files[`summary_${ext}`] = f;
-            } else {
-              runs[runKey].files[ext] = f;
-            }
-          }
-        });
-        
-        const runKeys = Object.keys(runs).sort().reverse();
-        
-        if (runKeys.length === 0) {
-          container.innerHTML = '<span class="text-slate-500">No valid result files found.</span>';
+        if (collections.length === 0) {
+          container.innerHTML = '<span class="text-slate-500">No collections yet. Run a pipeline to generate cards.</span>';
           return;
         }
         
         let html = '<div class="space-y-2">';
-        runKeys.forEach((key, idx) => {
-          const run = runs[key];
-          const files = run.files;
-          const fileCount = Object.keys(files).length;
+        collections.forEach(c => {
+          const date = new Date(c.created_at).toLocaleDateString();
+          const cardCount = c.card_count || 0;
+          const metaCount = c.meta_card_count || 0;
+          const safeName = c.name.replace(/'/g, "\\'");
           
           html += `
-            <details class="group" ${idx === 0 ? 'open' : ''}>
-              <summary class="flex items-center justify-between p-2 rounded-lg bg-slate-900/50 hover:bg-slate-800/50 cursor-pointer">
-                <div class="flex-1 min-w-0">
-                  <span class="text-accentCyan font-medium truncate block">${run.template}</span>
-                  <span class="text-slate-500 text-[10px]">📁 ${run.papers}</span>
+            <div class="p-2 rounded-lg bg-slate-900/50 hover:bg-slate-800/50 group">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-accentCyan font-medium truncate">${c.name}</span>
+                <button onclick="deleteCollection(${c.id}, '${safeName}')" 
+                        class="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
+                        title="Delete collection">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500 text-[10px]">📅 ${date} · 📄 ${cardCount} cards · 📊 ${metaCount} meta</span>
+                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <!-- Cards Downloads -->
+                  <div class="flex items-center gap-0.5 border-r border-slate-700 pr-1 mr-1">
+                    <span class="text-slate-600 text-[9px]">Cards:</span>
+                    <a href="${API_BASE}/db/collections/${c.id}/download/cards.json" 
+                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Download cards JSON">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                    </a>
+                    <a href="${API_BASE}/db/collections/${c.id}/download/cards.pdf" 
+                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentPink" title="Download cards PDF">
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                      </svg>
+                    </a>
+                  </div>
+                  <!-- Meta Card Downloads -->
+                  ${metaCount > 0 ? `
+                  <div class="flex items-center gap-0.5">
+                    <span class="text-slate-600 text-[9px]">Meta:</span>
+                    <a href="${API_BASE}/db/collections/${c.id}/download/metacard.json" 
+                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentCyan" title="Download meta-card JSON">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                    </a>
+                    <a href="${API_BASE}/db/collections/${c.id}/download/metacard.pdf" 
+                       class="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-accentPink" title="Download meta-card PDF">
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                      </svg>
+                    </a>
+                  </div>
+                  ` : ''}
                 </div>
-                <span class="text-slate-500 text-[10px] ml-2">${fileCount} files</span>
-              </summary>
-              <div class="mt-1 ml-2 pl-2 border-l border-slate-700 flex flex-wrap gap-1 py-1">
+              </div>
+            </div>
           `;
-          
-          // Order: Cards, Meta, Summary
-          const order = ['jsonl', 'meta_json', 'meta_jsonl', 'pdf', 'meta_pdf', 'summary_csv', 'csv'];
-          const labels = {
-            'jsonl': '📄 Cards',
-            'meta_json': '🧠 Meta',
-            'meta_jsonl': '🧠 Meta',
-            'pdf': '📑 PDF',
-            'meta_pdf': '📑 Meta PDF',
-            'summary_csv': '📊 Summary',
-            'csv': '📊 CSV'
-          };
-          
-          order.forEach(type => {
-            if (files[type]) {
-              const f = files[type];
-              const sizeKB = (f.size / 1024).toFixed(0);
-              const label = labels[type] || type.toUpperCase();
-              html += `
-                <a href="${API_BASE}/download/results/${encodeURIComponent(f.name)}" 
-                   target="_blank" title="${f.name}"
-                   class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-accentPink/20 text-slate-400 hover:text-accentPink text-[10px]">
-                  ${label} <span class="text-slate-600">${sizeKB}k</span>
-                </a>
-              `;
-            }
-          });
-          
-          html += '</div></details>';
         });
         html += '</div>';
         
         container.innerHTML = html;
       } catch (err) {
-        console.error("Failed to load results:", err);
+        console.error("Failed to load collections:", err);
         container.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+      }
+    }
+    
+    async function deleteCollection(collectionId, collectionName) {
+      if (!confirm(`Delete collection "${collectionName}"?\n\nThis will permanently delete all cards in this collection.`)) {
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE}/db/collections/${collectionId}?user_id=${currentUser.id}`, {
+          method: 'DELETE'
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Failed to delete");
+        }
+        
+        // Refresh the list
+        await refreshCollectionsList();
+        // Also refresh viz dropdowns if on that tab
+        if (typeof loadVizResultFiles === 'function') {
+          loadVizResultFiles();
+        }
+      } catch (err) {
+        alert(`Failed to delete collection: ${err.message}`);
       }
     }
 

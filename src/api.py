@@ -112,12 +112,16 @@ def save_run_to_database(
                     content=meta_data  # Fixed: was 'synthesis', should be 'content'
                 )
                 db.add(meta_card)
+                collection.meta_card_count = 1
                 print(f"[DB] Added meta card for collection {collection.id}")
         else:
             print(f"[DB] Meta card file NOT found")
         
+        # Update card count on collection
+        collection.card_count = order_idx
+        
         db.commit()
-        print(f"[DB] Saved collection {collection.id} with cards to database")
+        print(f"[DB] Saved collection {collection.id} with {order_idx} cards to database")
         return collection.id
         
     except Exception as e:

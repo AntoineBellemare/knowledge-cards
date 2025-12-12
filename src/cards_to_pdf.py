@@ -395,6 +395,122 @@ def build_pdf(cards_path: Path, out_path: Path):
     print(f"Saved PDF to {out_path}")
 
 
+def _get_pdf_styles():
+    """Create and return the styles used for PDF generation."""
+    styles = getSampleStyleSheet()
+
+    # small text style
+    if "Small" not in styles:
+        styles.add(
+            ParagraphStyle(
+                name="Small",
+                parent=styles["Normal"],
+                fontSize=9,
+                leading=11,
+                alignment=TA_LEFT,
+            )
+        )
+
+    # Heading tweaks
+    styles["Heading2"].spaceBefore = 8
+    styles["Heading2"].spaceAfter = 4
+    styles["Heading3"].spaceBefore = 4
+    styles["Heading3"].spaceAfter = 2
+
+    # custom deep-level heading
+    if "CardHeading4" not in styles:
+        styles.add(
+            ParagraphStyle(
+                name="CardHeading4",
+                parent=styles["Normal"],
+                fontSize=10,
+                leading=12,
+                spaceBefore=2,
+                spaceAfter=1,
+                leftIndent=6,
+                textColor="black",
+            )
+        )
+    
+    return styles
+
+
+# ------------- Functions for in-memory PDF generation -------------
+
+def create_cards_pdf_from_data(cards_data: List[Dict[str, Any]], out_path: str):
+    """Generate PDF from a list of card dicts (in-memory, no file read)."""
+    from pathlib import Path
+    out_path = Path(out_path)
+    
+    doc = SimpleDocTemplate(
+        str(out_path),
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+
+    styles = _get_pdf_styles()
+    story: List[Any] = []
+
+    for i, card in enumerate(cards_data):
+        if i > 0:
+            story.append(PageBreak())
+
+        # 1) citation block if present
+        render_citation_block(story, card, styles)
+
+        # 2) everything else, schema-agnostic, in original JSON order
+        for key in card.keys():
+            if key in ("citation", "_file"):
+                continue
+            val = card.get(key)
+            if not nonempty(val):
+                continue
+            render_any(key, val, story, styles, level=1)
+
+    doc.build(story)
+    print(f"[PDF] Generated cards PDF: {out_path}")
+
+
+def create_metacard_pdf_from_data(metacard_data: Dict[str, Any], out_path: str):
+    """Generate PDF from a single meta-card dict (in-memory, no file read)."""
+    from pathlib import Path
+    out_path = Path(out_path)
+    
+    doc = SimpleDocTemplate(
+        str(out_path),
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+
+    styles = _get_pdf_styles()
+    story: List[Any] = []
+
+    # Render the meta-card
+    render_citation_block(story, metacard_data, styles)
+
+    for key in metacard_data.keys():
+        if key in ("citation", "_file", "metadata"):
+            continue
+        val = metacard_data.get(key)
+        if not nonempty(val):
+            continue
+        render_any(key, val, story, styles, level=1)
+    
+    # Render metadata separately for meta-cards (includes papers_covered)
+    metadata = metacard_data.get("metadata")
+    if metadata and nonempty(metadata):
+        render_any("metadata", metadata, story, styles, level=1)
+
+    doc.build(story)
+    print(f"[PDF] Generated metacard PDF: {out_path}")
+
+
 # ------------- CLI -------------
 
 def main():
