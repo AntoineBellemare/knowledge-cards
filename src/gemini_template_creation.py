@@ -33,7 +33,7 @@ import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted, GoogleAPIError, DeadlineExceeded
 
 from cards_to_pdf import build_pdf  # <- use the build_pdf you showed
-from generate_meta_card_UI import load_schemas_from_file, generate_meta_card
+from generate_meta_card_UI import load_schemas_from_file, generate_meta_card, generate_speculation
 
 
 
@@ -464,6 +464,23 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     # map-reduce
     chunks = build_chunks(sections)
     total_chunks = len(chunks)
+    
+    # Dynamically adjust total if we have more chunks than estimated
+    if global_progress:
+        # Add extra work units if actual chunks exceed what we estimated
+        estimated_reductions = 0
+        if total_chunks > 4:
+            estimated_reductions = (total_chunks + 3) // 4
+            if estimated_reductions > 4:
+                estimated_reductions += (estimated_reductions + 3) // 4
+        actual_work = total_chunks + estimated_reductions + 1
+        # If actual is higher than remaining estimated, boost the total
+        remaining_estimated = global_progress['total'] - global_progress['current']
+        if actual_work > remaining_estimated:
+            extra = actual_work - remaining_estimated
+            global_progress['total'] += extra
+            print(f"[PROGRESS] Adjusted total: +{extra} units for {pdf_path.name} ({total_chunks} chunks)")
+    
     partials = []
     for idx, ch in enumerate(chunks):
         section_preview = ch['section'][:30].replace('\n', ' ')
@@ -608,6 +625,7 @@ def run_gemini_cards(
     schema_name: str,
     papers_folder: str,
     model: Optional[str] = None,
+    template_question: Optional[str] = None,
 ) -> Tuple[Path, Path, Path]:
     """
     Run the Gemini cards pipeline over all PDFs in papers/<papers_folder>,
@@ -640,7 +658,20 @@ def run_gemini_cards(
 
     # --- initialise Gemini, load schema ---
     init_gemini()
-    schema = load_schema(schema_path)
+    
+    # Load full schema file to extract question if not provided
+    with schema_path.open("r", encoding="utf-8") as f:
+        schema_data = json.load(f)
+    
+    # Extract the actual schema and question
+    if "schema" in schema_data:
+        schema = schema_data["schema"]
+        if not template_question:
+            template_question = schema_data.get("question", "")
+    else:
+        schema = schema_data
+    
+    print(f"[UI] Template question: {template_question[:100]}..." if template_question else "[UI] No template question found")
 
     pdfs = sorted(papers_dir.glob("*.pdf"))
     if not pdfs:
@@ -689,15 +720,17 @@ def run_gemini_cards(
     build_pdf(jsonl_path, pdf_path)
     print(f"[UI] Saved PDF   to {pdf_path}")
 
-    # --- META-CARD generation + PDF (NEW) ---
+    # --- META-CARD generation + PDF (with SPECULATION) ---
     try:
         # 1) Load all schemas/cards from the JSONL you just wrote
         schemas_for_meta = load_schemas_from_file(jsonl_path)
 
-        # 2) Ask Gemini to create a single meta-card
+        # 2) Ask Gemini to create a single meta-card (now includes speculation)
         meta_card = generate_meta_card(
             schemas_for_meta,
             model=model or GEMINI_MODEL,
+            question=template_question,  # Pass question for speculative synthesis
+            include_speculation=True,
         )
 
         # 3) Save meta-card as a single JSON
@@ -786,10 +819,10 @@ def run_gemini_cards_with_progress(
     pdf_work_estimates = []
     for pdf in pdfs:
         try:
-            # Quick estimate: small PDFs = 1 unit, larger = estimated chunks + reduction batches
+            # Quick estimate: based on file size
+            # Use 20KB per chunk (more conservative - text-heavy PDFs have more chunks)
             file_size = pdf.stat().st_size
-            # Rough estimate: ~1 chunk per 50KB, minimum 1
-            estimated_chunks = max(1, file_size // 50000)
+            estimated_chunks = max(1, file_size // 20000)
             # Add estimated reduction batches (for large docs: chunks/4 batches, then recursive)
             estimated_reductions = 0
             if estimated_chunks > 4:
@@ -798,15 +831,18 @@ def run_gemini_cards_with_progress(
                 # Second level reduction if needed
                 if estimated_reductions > 4:
                     estimated_reductions += (estimated_reductions + 3) // 4
+                # Third level if very large
+                if estimated_reductions > 16:
+                    estimated_reductions += (estimated_reductions + 3) // 4
             estimated_work = estimated_chunks + estimated_reductions + 1  # +1 for final merge
             pdf_work_estimates.append(estimated_work)
             total_work_units += estimated_work
         except:
-            pdf_work_estimates.append(2)
-            total_work_units += 2
+            pdf_work_estimates.append(5)
+            total_work_units += 5
     
     # Add work units for saving and meta-card
-    total_work_units += total_pdfs  # Reduction for each PDF
+    total_work_units += 5  # Saving files
     total_work_units += 3  # Meta-card generation
     
     report("scan", total_pdfs, total_pdfs, f"Estimated {total_work_units} work units")
@@ -856,14 +892,16 @@ def run_gemini_cards_with_progress(
     pdf_path = RESULTS_DIR / f"{base_name}.pdf"
     build_pdf(jsonl_path, pdf_path)
 
-    # --- META-CARD ---
+    # --- META-CARD with SPECULATION ---
     global_progress['current'] += 1
-    report("meta", global_progress['current'], total_work_units, "Building meta-card...")
+    report("meta", global_progress['current'], total_work_units, "Building meta-card with speculative synthesis...")
     try:
         schemas_for_meta = load_schemas_from_file(jsonl_path)
         meta_card = generate_meta_card(
             schemas_for_meta,
             model=model or GEMINI_MODEL,
+            question=template_question,  # Pass question for speculative synthesis
+            include_speculation=True,
         )
         
         # Add the original question to the meta-card if available

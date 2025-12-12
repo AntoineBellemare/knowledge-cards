@@ -98,6 +98,25 @@ META_SYSTEM_PROMPT = (
     "- DO NOT add any prose outside of the JSON. Return valid JSON only."
 )
 
+# Speculation system prompt for generating novel insights from synthesized knowledge
+SPECULATION_SYSTEM_PROMPT = (
+    "You are a creative research synthesizer and speculative theorist.\n"
+    "Your task is to generate NOVEL SPECULATIVE INSIGHTS by combining and extending ideas "
+    "from multiple research papers. You think like a visionary researcher who sees connections "
+    "others miss and proposes bold but grounded hypotheses.\n\n"
+    "GUIDING PRINCIPLES:\n"
+    "- Look for UNEXPECTED CONNECTIONS between papers that address different aspects of the question.\n"
+    "- Identify TENSIONS or CONTRADICTIONS between papers as fertile ground for new thinking.\n"
+    "- Generate hypotheses that are NOVEL but still GROUNDED in the evidence across papers.\n"
+    "- Think across DISCIPLINARY BOUNDARIES - what would a philosopher, artist, or scientist from another field notice?\n"
+    "- Consider EMERGENT PROPERTIES - what new understanding arises from the combination that isn't in any single paper?\n"
+    "- Be BOLD but HONEST about the speculative nature of your insights.\n\n"
+    "OUTPUT FORMAT:\n"
+    "Return a JSON object with the 'speculative_synthesis' structure as specified.\n"
+    "Each insight should be substantive (2-4 sentences) and reference which papers/ideas it draws from.\n"
+    "DO NOT just summarize - SYNTHESIZE and EXTEND beyond what the papers explicitly state."
+)
+
 
 def init_gemini() -> None:
     """Configure Gemini from GOOGLE_API_KEY (env or .env)."""
@@ -235,12 +254,182 @@ def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
     return prompt
 
 
-def generate_meta_card(
+# Schema for the speculative synthesis section
+SPECULATION_SCHEMA = {
+    "speculative_synthesis": {
+        "emergent_hypotheses": {
+            "cross_paper_connections": [
+                "Novel connection 1: [describe insight linking 2+ papers]",
+                "Novel connection 2: [describe another unexpected link]"
+            ],
+            "novel_theoretical_bridges": [
+                "Bridge 1: [theoretical framework that unifies disparate findings]"
+            ],
+            "synthetic_propositions": [
+                "Proposition 1: [bold claim emerging from combined evidence]"
+            ]
+        },
+        "generative_questions": {
+            "questions_arising_from_gaps": [
+                "What remains unexplored at the intersection of X and Y?"
+            ],
+            "questions_from_tensions": [
+                "How can we reconcile the apparent contradiction between A and B?"
+            ],
+            "interdisciplinary_provocations": [
+                "What would a [different field] perspective reveal about these findings?"
+            ]
+        },
+        "speculative_predictions": {
+            "testable_hypotheses": [
+                "If X is true across papers, we should observe Y in context Z"
+            ],
+            "methodological_innovations": [
+                "Combining methods from papers A and B could enable..."
+            ],
+            "potential_paradigm_shifts": [
+                "These findings collectively suggest we may need to rethink..."
+            ]
+        },
+        "creative_extensions": {
+            "metaphorical_insights": [
+                "The pattern across papers is like... [rich metaphor]"
+            ],
+            "cross_domain_applications": [
+                "These principles could transform how we approach..."
+            ],
+            "experiential_or_artistic_implications": [
+                "For lived experience, this suggests..."
+            ]
+        },
+        "synthesis_narrative": "A 3-5 sentence integrative narrative that weaves together the most provocative speculative insights, creating a coherent vision of what these papers collectively point toward that none of them individually articulates."
+    }
+}
+
+
+def build_speculation_prompt(
+    meta_card: Dict[str, Any], 
+    schemas: List[Dict[str, Any]], 
+    question: Optional[str] = None
+) -> str:
+    """
+    Build a prompt for generating speculative insights from the meta-card and original schemas.
+    
+    Args:
+        meta_card: The synthesized meta-card
+        schemas: The original individual paper schemas
+        question: The original research question that guided the analysis (optional but valuable)
+    """
+    # Extract key information from meta-card for focused speculation
+    meta_summary = json.dumps(meta_card, ensure_ascii=False, indent=2)
+    
+    # Get paper titles/authors for reference
+    paper_refs = []
+    for schema in schemas:
+        metadata = schema.get("metadata", {})
+        citation = schema.get("citation", {})
+        title = metadata.get("title") or citation.get("title") or "Unknown"
+        authors = metadata.get("authors") or citation.get("authors") or []
+        if isinstance(authors, list):
+            authors = ", ".join(authors[:2]) + ("..." if len(authors) > 2 else "")
+        paper_refs.append(f"- {title} ({authors})")
+    
+    papers_list = "\n".join(paper_refs)
+    
+    question_section = ""
+    if question:
+        question_section = f"""
+ORIGINAL RESEARCH QUESTION:
+\"\"\"{question}\"\"\"
+
+Use this question as a lens for your speculation. What novel insights emerge specifically 
+in relation to this question that no single paper addresses?
+"""
+
+    prompt = f"""
+You are generating SPECULATIVE INSIGHTS from a synthesis of multiple research papers.
+
+{question_section}
+
+PAPERS ANALYZED:
+{papers_list}
+
+META-SYNTHESIS (combined findings across all papers):
+```json
+{meta_summary}
+```
+
+YOUR TASK:
+Generate a 'speculative_synthesis' section that goes BEYOND what any individual paper says.
+Look for:
+1. EMERGENT PATTERNS that only become visible when papers are combined
+2. TENSIONS between papers that could spark new research directions  
+3. GAPS where the collective evidence points but no paper goes
+4. UNEXPECTED CONNECTIONS between concepts from different papers
+5. BOLD HYPOTHESES grounded in the combined evidence
+
+OUTPUT SCHEMA:
+```json
+{json.dumps(SPECULATION_SCHEMA, ensure_ascii=False, indent=2)}
+```
+
+IMPORTANT GUIDELINES:
+- Reference specific papers or findings when making connections
+- Be genuinely speculative but ground insights in the evidence
+- Prioritize novelty - don't just summarize what's already in the meta-card
+- Think like a creative researcher seeing the big picture
+- For the synthesis_narrative, write in an engaging, thought-provoking style
+- Generate at least 3 items per list field
+
+Return ONLY the JSON object for 'speculative_synthesis'.
+"""
+    return prompt
+
+
+def generate_speculation(
+    meta_card: Dict[str, Any],
     schemas: List[Dict[str, Any]],
+    question: Optional[str] = None,
     model: str = "gemini-2.5-flash-lite",
 ) -> Dict[str, Any]:
     """
+    Generate speculative insights from the meta-card and original schemas.
+    
+    Args:
+        meta_card: The synthesized meta-card
+        schemas: The original individual paper schemas  
+        question: The original research question (optional)
+        model: Gemini model to use
+        
+    Returns:
+        The speculative_synthesis section as a dict
+    """
+    prompt = build_speculation_prompt(meta_card, schemas, question)
+    speculation = call_gemini_json(model, SPECULATION_SYSTEM_PROMPT, prompt)
+    
+    # Ensure we have the expected structure
+    if "speculative_synthesis" in speculation:
+        return speculation["speculative_synthesis"]
+    return speculation
+
+
+def generate_meta_card(
+    schemas: List[Dict[str, Any]],
+    model: str = "gemini-2.5-flash-lite",
+    question: Optional[str] = None,
+    include_speculation: bool = True,
+) -> Dict[str, Any]:
+    """
     High-level function that generates a meta-card dict from a list of schemas.
+    
+    Args:
+        schemas: List of individual paper schemas
+        model: Gemini model to use
+        question: The original research question (used for speculation)
+        include_speculation: Whether to generate speculative insights (default True)
+        
+    Returns:
+        Complete meta-card with optional speculative_synthesis section
     """
     init_gemini()
     prompt = build_meta_prompt(schemas)
@@ -249,6 +438,77 @@ def generate_meta_card(
     if not isinstance(meta_card, dict):
         raise ValueError("Gemini did not return a JSON object for the meta-card.")
 
+    # Generate speculative insights if requested
+    if include_speculation:
+        try:
+            print("[INFO] Generating speculative synthesis...")
+            speculation = generate_speculation(meta_card, schemas, question, model)
+            meta_card["speculative_synthesis"] = speculation
+            print("[INFO] Speculative synthesis added to meta-card.")
+        except Exception as e:
+            print(f"[WARN] Could not generate speculation: {e}")
+            # Add empty speculation section on failure
+            meta_card["speculative_synthesis"] = {
+                "error": str(e),
+                "emergent_hypotheses": {},
+                "generative_questions": {},
+                "speculative_predictions": {},
+                "creative_extensions": {},
+                "synthesis_narrative": ""
+            }
+
+    return meta_card
+
+
+def add_speculation_to_existing_meta(
+    meta_json_path: Path,
+    cards_jsonl_path: Path,
+    question: Optional[str] = None,
+    model: str = "gemini-2.5-flash-lite",
+) -> Dict[str, Any]:
+    """
+    Add speculative synthesis to an existing meta-card.
+    
+    Useful for regenerating speculation without reprocessing all papers.
+    
+    Args:
+        meta_json_path: Path to existing meta-card JSON
+        cards_jsonl_path: Path to the original cards JSONL
+        question: Research question (if not embedded in cards)
+        model: Gemini model to use
+        
+    Returns:
+        Updated meta-card with speculative_synthesis
+    """
+    init_gemini()
+    
+    # Load existing meta-card
+    with meta_json_path.open("r", encoding="utf-8") as f:
+        meta_card = json.load(f)
+    
+    # Load original schemas
+    schemas = load_schemas_from_file(cards_jsonl_path)
+    
+    # Try to extract question from cards if not provided
+    if not question:
+        for schema in schemas:
+            q = schema.get("_template_question")
+            if q:
+                question = q
+                break
+    
+    print(f"[INFO] Adding speculation to existing meta-card...")
+    print(f"[INFO] Question: {question[:100]}..." if question else "[INFO] No question found")
+    
+    # Generate speculation
+    speculation = generate_speculation(meta_card, schemas, question, model)
+    meta_card["speculative_synthesis"] = speculation
+    
+    # Save updated meta-card
+    with meta_json_path.open("w", encoding="utf-8") as f:
+        json.dump(meta_card, f, ensure_ascii=False, indent=2)
+    
+    print(f"[DONE] Speculation added to {meta_json_path}")
     return meta_card
 
 
@@ -262,7 +522,7 @@ def main() -> None:
         "--input",
         "-i",
         required=True,
-        help="Path to input .json file containing multiple cards/schemas (like your card.json).",
+        help="Path to input .json/.jsonl file containing multiple cards/schemas.",
     )
     ap.add_argument(
         "--output",
@@ -276,16 +536,50 @@ def main() -> None:
         default="gemini-2.5-flash-lite",
         help="Gemini model name (default: gemini-2.5-flash-lite).",
     )
+    ap.add_argument(
+        "--question",
+        "-q",
+        default=None,
+        help="Research question to guide speculation (optional).",
+    )
+    ap.add_argument(
+        "--no-speculation",
+        action="store_true",
+        help="Disable speculative synthesis generation.",
+    )
+    ap.add_argument(
+        "--add-speculation",
+        type=str,
+        default=None,
+        help="Add speculation to existing meta-card. Provide path to cards JSONL.",
+    )
     args = ap.parse_args()
 
     in_path = Path(args.input)
     out_path = Path(args.output)
 
+    # Mode: Add speculation to existing meta-card
+    if args.add_speculation:
+        cards_path = Path(args.add_speculation)
+        add_speculation_to_existing_meta(
+            in_path,  # Existing meta-card
+            cards_path,  # Original cards
+            question=args.question,
+            model=args.model,
+        )
+        return
+
+    # Mode: Generate new meta-card
     print(f"[INFO] Loading schemas from {in_path} ...")
     schemas = load_schemas_from_file(in_path)
 
     print("[INFO] Generating meta-card with Gemini...")
-    meta_card = generate_meta_card(schemas, model=args.model)
+    meta_card = generate_meta_card(
+        schemas, 
+        model=args.model,
+        question=args.question,
+        include_speculation=not args.no_speculation,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as f:
