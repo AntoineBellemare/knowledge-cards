@@ -53,9 +53,9 @@ RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model + context settings
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")   # change if you like
-MAX_INPUT_TOKENS = 10000   # was 20000 – force map-reduce for long papers
-CHUNK_TOK_TARGET = 6000   # smaller chunks
-CHUNK_OVERLAP = 1000       # proportionally smaller overlap
+MAX_INPUT_TOKENS = 2000    # single-pass only for very short papers
+CHUNK_TOK_TARGET = 1000    # ~1k words per chunk for focused extraction
+CHUNK_OVERLAP = 200        # 20% overlap to maintain context
 
 
 # Section heading heuristics (expand as needed)
@@ -210,7 +210,29 @@ def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> D
             print(f"[Gemini] Prompt length: {len(user_msg.split())} words, {len(user_msg)} chars")
             resp = m.generate_content(user_msg)
             # print("[Gemini] Call succeeded.")
-            return json.loads(resp.text)
+            raw_text = resp.text.strip()
+            # Clean up common JSON formatting issues
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            return json.loads(raw_text.strip())
+        except json.JSONDecodeError as e:
+            last_err = e
+            print(f"[Gemini] JSON decode error on attempt {t+1}: {e}")
+            if t < retries - 1:
+                print(f"[Gemini] Response preview: {resp.text[:500]}...")
+                time.sleep(1.0 * (t + 1))
+            else:
+                print(f"[Gemini] Full malformed response saved for debugging")
+                # Save the malformed response for debugging
+                try:
+                    with open(f"debug_malformed_{int(time.time())}.txt", "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                except:
+                    pass
         except (ResourceExhausted, DeadlineExceeded) as e:
             last_err = e
             print(f"[Gemini] Resource/Deadline error on attempt {t+1}: {e}")
@@ -325,6 +347,43 @@ MERGE RULES (VERY IMPORTANT):
 - Return FINAL JSON only.
 """
 
+def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], batch_size: int = 8) -> Dict[str, Any]:
+    """
+    Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
+    
+    For books with many chunks (e.g., 30), reduces them in groups:
+    - Batch 1-8 → intermediate card 1
+    - Batch 9-16 → intermediate card 2
+    - Batch 17-24 → intermediate card 3
+    - Batch 25-30 → intermediate card 4
+    Then reduces those 4 intermediate cards → final card
+    
+    This prevents sending 900KB+ JSON in a single reduction.
+    """
+    if len(partial_cards) <= batch_size:
+        # Base case: small enough to reduce directly
+        print(f"[BATCH REDUCE] Final reduction of {len(partial_cards)} cards.")
+        user = prompt_reduce(schema, title, filename, partial_cards)
+        return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+    
+    # Recursive case: split into batches, reduce each, then reduce the results
+    print(f"[BATCH REDUCE] Splitting {len(partial_cards)} cards into batches of {batch_size}.")
+    intermediate_cards = []
+    
+    for i in range(0, len(partial_cards), batch_size):
+        batch = partial_cards[i:i + batch_size]
+        batch_num = (i // batch_size) + 1
+        total_batches = (len(partial_cards) + batch_size - 1) // batch_size
+        print(f"[BATCH REDUCE] Processing batch {batch_num}/{total_batches} ({len(batch)} cards)...")
+        
+        user = prompt_reduce(schema, title, filename, batch)
+        intermediate = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        intermediate_cards.append(intermediate)
+    
+    print(f"[BATCH REDUCE] Batch processing complete. Now reducing {len(intermediate_cards)} intermediate cards.")
+    # Recursively reduce the intermediate cards (in case there are many batches)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size)
+
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
     # crude: use words count as proxy for tokens
@@ -380,8 +439,16 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any]) -> Dict[str, Any]
         return data
 
     print(f"[PIPELINE] {pdf_path.name}: reducing {len(partials)} partial cards.")
-    user = prompt_reduce(schema, title, pdf_path.name, partials)
-    data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+    
+    # For long documents (books), use hierarchical batch reduction
+    if len(partials) > 15:
+        print(f"[PIPELINE] Using hierarchical batch reduction for {len(partials)} partials.")
+        data = reduce_in_batches(schema, title, pdf_path.name, partials)
+    else:
+        # Single-pass reduction for shorter documents
+        user = prompt_reduce(schema, title, pdf_path.name, partials)
+        data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+    
     data["_file"] = pdf_path.name
     if "citation" in data and isinstance(data["citation"], dict):
         data["citation"].setdefault("title", title)

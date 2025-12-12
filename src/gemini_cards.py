@@ -38,9 +38,9 @@ OUT_DIR = Path("../results"); OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model + context settings
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")   # change if you like
-MAX_INPUT_TOKENS = 10000   # was 20000 – force map-reduce for long papers
-CHUNK_TOK_TARGET = 6000   # smaller chunks
-CHUNK_OVERLAP = 1000       # proportionally smaller overlap
+MAX_INPUT_TOKENS = 2000    # single-pass only for very short papers
+CHUNK_TOK_TARGET = 1000    # ~1k words per chunk for focused extraction
+CHUNK_OVERLAP = 200        # 20% overlap to maintain context
 
 
 # Section heading heuristics (expand as needed)
