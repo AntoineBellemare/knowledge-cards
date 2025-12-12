@@ -330,12 +330,28 @@
       <!-- Username Modal -->
       <div id="userModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
         <div class="glass-soft rounded-xl p-6 w-full max-w-md mx-4 shadow-neon">
-          <h3 class="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+          <h3 id="modalTitle" class="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
             <svg class="w-5 h-5 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
             </svg>
-            Your Profile
+            <span id="modalTitleText">Sign In or Register</span>
           </h3>
+          
+          <!-- Mode Toggle -->
+          <div id="authModeToggle" class="flex rounded-lg bg-slate-800/80 p-1 mb-4">
+            <button 
+              id="loginTab" 
+              onclick="setAuthMode('login')"
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all bg-accentPurple text-white">
+              Sign In
+            </button>
+            <button 
+              id="registerTab" 
+              onclick="setAuthMode('register')"
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all text-slate-400 hover:text-slate-200">
+              Register
+            </button>
+          </div>
           
           <div class="space-y-4">
             <div>
@@ -344,16 +360,18 @@
                 <input
                   type="text"
                   id="usernameInput"
-                  placeholder="Enter a username..."
+                  placeholder="Enter your username..."
                   class="flex-1 px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm focus:border-accentPurple focus:outline-none"
-                  oninput="checkUsernameAvailability(this.value)"
+                  oninput="onUsernameInput(this.value)"
+                  onkeydown="if(event.key==='Enter') handleAuthAction()"
                 />
                 <span id="usernameStatus" class="flex items-center px-2 text-xs"></span>
               </div>
-              <p id="usernameHint" class="mt-1 text-xs text-slate-500">Choose a username to save your templates & cards</p>
+              <p id="usernameHint" class="mt-1 text-xs text-slate-500">Enter your username to sign in</p>
             </div>
             
-            <div>
+            <!-- Display name - only shown in register mode -->
+            <div id="displayNameRow" class="hidden">
               <label class="block text-xs font-mono text-slate-400 mb-1">Display Name (optional)</label>
               <input
                 type="text"
@@ -371,17 +389,21 @@
               Cancel
             </button>
             <button
-              id="saveUserBtn"
-              onclick="saveUsername()"
+              id="authActionBtn"
+              onclick="handleAuthAction()"
               class="flex-1 px-4 py-2 rounded-lg bg-accentPurple text-white text-sm font-medium hover:bg-accentPurple/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              Save
+              Sign In
             </button>
           </div>
           
+          <!-- Logged in user info -->
           <div id="userInfo" class="mt-4 pt-4 border-t border-slate-700 hidden">
-            <p class="text-xs text-slate-500">
-              User ID: <span id="userIdDisplay" class="font-mono text-slate-400"></span>
-            </p>
+            <div class="flex items-center justify-between">
+              <p class="text-xs text-slate-500">
+                Signed in as: <span id="userIdDisplay" class="font-mono text-accentPurple"></span>
+              </p>
+              <button onclick="logoutUser()" class="text-xs text-red-400 hover:text-red-300">Sign Out</button>
+            </div>
           </div>
         </div>
       </div>
@@ -701,29 +723,98 @@
 
       <!-- View: Templates -->
       <section id="view-templates" class="flex-1 overflow-auto hidden">
-        <div class="max-w-5xl mx-auto py-7 px-6">
+        <div class="max-w-6xl mx-auto py-7 px-6">
+          <!-- Header -->
           <div class="flex items-center justify-between mb-6">
             <div>
-              <h1 class="text-2xl font-semibold text-slate-100 tracking-tight">
-                Template library
+              <h1 class="text-2xl font-semibold text-slate-100 tracking-tight flex items-center gap-3">
+                <svg class="w-7 h-7 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                Template Library
               </h1>
               <p class="text-xs text-slate-400 mt-1">
-                Saved schemas for different questions and projects.
+                Your personal templates and community-shared schemas
               </p>
             </div>
-            <button id="btn-open-current-from-library"
-              class="text-xs font-mono text-accentCyan hover:underline hidden">
-              ⇢ Edit current template
-            </button>
+            <div class="flex items-center gap-3">
+              <button id="btn-refresh-templates" onclick="loadAllTemplates()" 
+                class="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs font-mono hover:bg-slate-800 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh
+              </button>
+              <button id="btn-open-current-from-library"
+                class="text-xs font-mono text-accentCyan hover:underline hidden">
+                ⇢ Edit current template
+              </button>
+            </div>
           </div>
 
-          <div id="templates-empty" class="card-neutral rounded-xl p-8 text-center text-sm text-slate-400">
-            <div class="text-4xl mb-3 opacity-50">📁</div>
-            No templates saved yet. Generate a template from a question, then click
-            <span class="font-mono text-accentCyan">Save to library</span> in the editor.
+          <!-- My Templates Section -->
+          <div class="mb-8">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-accentPurple"></div>
+                <h2 class="text-lg font-semibold text-slate-100">My Templates</h2>
+              </div>
+              <span id="my-templates-count" class="px-2 py-0.5 rounded-full text-xs font-mono bg-accentPurple/20 text-accentPurple">0</span>
+              <div class="flex-1 h-px bg-gradient-to-r from-accentPurple/30 to-transparent"></div>
+            </div>
+            
+            <div id="my-templates-empty" class="card-purple rounded-xl p-6 text-center hidden">
+              <div class="text-4xl mb-3 opacity-50">📁</div>
+              <p class="text-sm text-slate-400 mb-2">No personal templates yet</p>
+              <p class="text-xs text-slate-500">
+                Generate a template from a question, then click <span class="font-mono text-accentPurple">Save to library</span>
+              </p>
+            </div>
+            
+            <div id="my-templates-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
           </div>
 
-          <div id="templates-list" class="space-y-3 hidden"></div>
+          <!-- Collective Templates Section -->
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-accentCyan"></div>
+                <h2 class="text-lg font-semibold text-slate-100">Community Templates</h2>
+              </div>
+              <span id="collective-templates-count" class="px-2 py-0.5 rounded-full text-xs font-mono bg-accentCyan/20 text-accentCyan">0</span>
+              <div class="flex-1 h-px bg-gradient-to-r from-accentCyan/30 to-transparent"></div>
+            </div>
+            
+            <!-- Search & Filters -->
+            <div class="flex flex-wrap items-center gap-3 mb-4">
+              <div class="relative flex-1 min-w-[200px] max-w-md">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="collective-search" type="text" placeholder="Search community templates..."
+                  class="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm focus:border-accentCyan focus:outline-none"
+                  oninput="filterCollectiveTemplates(this.value)" />
+              </div>
+              <div class="flex gap-2">
+                <button onclick="sortCollectiveTemplates('popular')" class="collective-sort-btn px-3 py-1.5 rounded-lg text-xs font-mono border border-slate-600 text-slate-400 hover:bg-slate-800 data-[active=true]:bg-accentCyan/20 data-[active=true]:border-accentCyan/50 data-[active=true]:text-accentCyan" data-sort="popular" data-active="true">
+                  🔥 Popular
+                </button>
+                <button onclick="sortCollectiveTemplates('recent')" class="collective-sort-btn px-3 py-1.5 rounded-lg text-xs font-mono border border-slate-600 text-slate-400 hover:bg-slate-800 data-[active=true]:bg-accentCyan/20 data-[active=true]:border-accentCyan/50 data-[active=true]:text-accentCyan" data-sort="recent">
+                  🕐 Recent
+                </button>
+              </div>
+            </div>
+
+            <div id="collective-templates-empty" class="card-cyan rounded-xl p-6 text-center hidden">
+              <div class="text-4xl mb-3 opacity-50">🌐</div>
+              <p class="text-sm text-slate-400 mb-2">No community templates available</p>
+              <p class="text-xs text-slate-500">
+                Be the first to share! Save a template and mark it as <span class="font-mono text-accentCyan">Public</span>
+              </p>
+            </div>
+            
+            <div id="collective-templates-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+          </div>
         </div>
       </section>
 
@@ -1282,6 +1373,7 @@
     let schemaJSON = null;
     let sectionExpanded = {}; // key -> bool
     let showFullJSON = false;
+    let templatesLoaded = false; // Track if templates have been loaded
     
     // User state
     let currentUser = null; // {id, username, display_name, anonymous_id}
@@ -1363,20 +1455,67 @@
       }
     }
     
+    // Auth mode: 'login' or 'register'
+    let authMode = 'login';
+    
+    function setAuthMode(mode) {
+      authMode = mode;
+      const loginTab = document.getElementById('loginTab');
+      const registerTab = document.getElementById('registerTab');
+      const displayNameRow = document.getElementById('displayNameRow');
+      const authBtn = document.getElementById('authActionBtn');
+      const hint = document.getElementById('usernameHint');
+      const status = document.getElementById('usernameStatus');
+      
+      if (mode === 'login') {
+        loginTab.classList.add('bg-accentPurple', 'text-white');
+        loginTab.classList.remove('text-slate-400');
+        registerTab.classList.remove('bg-accentPurple', 'text-white');
+        registerTab.classList.add('text-slate-400');
+        displayNameRow.classList.add('hidden');
+        authBtn.textContent = 'Sign In';
+        hint.textContent = 'Enter your username to sign in';
+      } else {
+        registerTab.classList.add('bg-accentPurple', 'text-white');
+        registerTab.classList.remove('text-slate-400');
+        loginTab.classList.remove('bg-accentPurple', 'text-white');
+        loginTab.classList.add('text-slate-400');
+        displayNameRow.classList.remove('hidden');
+        authBtn.textContent = 'Create Account';
+        hint.textContent = 'Choose a unique username';
+      }
+      
+      // Re-check username with new mode
+      const username = document.getElementById('usernameInput').value;
+      if (username) onUsernameInput(username);
+    }
+    
     function openUserModal() {
       const modal = document.getElementById('userModal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
       
-      // Pre-fill if user exists
-      if (currentUser) {
-        document.getElementById('usernameInput').value = currentUser.username || '';
+      // If already logged in, show profile mode
+      if (currentUser?.username) {
+        document.getElementById('authModeToggle').classList.add('hidden');
+        document.getElementById('modalTitleText').textContent = 'Your Profile';
+        document.getElementById('usernameInput').value = currentUser.username;
         document.getElementById('displayNameInput').value = currentUser.display_name || '';
-        
-        if (currentUser.id) {
-          document.getElementById('userIdDisplay').textContent = currentUser.id;
-          document.getElementById('userInfo').classList.remove('hidden');
-        }
+        document.getElementById('displayNameRow').classList.remove('hidden');
+        document.getElementById('authActionBtn').textContent = 'Update Profile';
+        document.getElementById('userIdDisplay').textContent = '@' + currentUser.username;
+        document.getElementById('userInfo').classList.remove('hidden');
+        document.getElementById('usernameHint').textContent = 'You are signed in';
+        document.getElementById('usernameStatus').innerHTML = '<span class="text-green-400">✓</span>';
+        authMode = 'profile';
+      } else {
+        // Show login/register mode
+        document.getElementById('authModeToggle').classList.remove('hidden');
+        document.getElementById('modalTitleText').textContent = 'Sign In or Register';
+        document.getElementById('usernameInput').value = '';
+        document.getElementById('displayNameInput').value = '';
+        document.getElementById('userInfo').classList.add('hidden');
+        setAuthMode('login');
       }
     }
     
@@ -1387,18 +1526,18 @@
     }
     
     let usernameCheckTimeout = null;
-    async function checkUsernameAvailability(username) {
+    async function onUsernameInput(username) {
       const status = document.getElementById('usernameStatus');
       const hint = document.getElementById('usernameHint');
-      const saveBtn = document.getElementById('saveUserBtn');
+      const authBtn = document.getElementById('authActionBtn');
       
       // Clear previous timeout
       if (usernameCheckTimeout) clearTimeout(usernameCheckTimeout);
       
       if (!username || username.length < 2) {
         status.innerHTML = '';
-        hint.textContent = 'Username must be at least 2 characters';
-        saveBtn.disabled = true;
+        hint.textContent = authMode === 'login' ? 'Enter your username' : 'Username must be at least 2 characters';
+        authBtn.disabled = true;
         return;
       }
       
@@ -1406,43 +1545,59 @@
       if (!/^[a-zA-Z0-9_]+$/.test(username)) {
         status.innerHTML = '<span class="text-red-400">✗</span>';
         hint.textContent = 'Only letters, numbers, and underscores allowed';
-        saveBtn.disabled = true;
+        authBtn.disabled = true;
         return;
       }
       
-      // If it's the current user's username, it's fine
-      if (currentUser?.username === username) {
+      // If editing own profile, allow same username
+      if (authMode === 'profile' && currentUser?.username === username) {
         status.innerHTML = '<span class="text-green-400">✓</span>';
         hint.textContent = 'This is your current username';
-        saveBtn.disabled = false;
+        authBtn.disabled = false;
         return;
       }
       
       // Debounce the API call
       status.innerHTML = '<span class="text-slate-400">...</span>';
+      hint.textContent = 'Checking...';
+      
       usernameCheckTimeout = setTimeout(async () => {
         try {
           const res = await fetch(`${API_BASE}/db/users/check-username/${encodeURIComponent(username)}`);
           const data = await res.json();
           
-          if (data.available) {
-            status.innerHTML = '<span class="text-green-400">✓</span>';
-            hint.textContent = 'Username is available!';
-            saveBtn.disabled = false;
+          if (authMode === 'login') {
+            // For login: username must EXIST
+            if (data.available) {
+              status.innerHTML = '<span class="text-red-400">✗</span>';
+              hint.textContent = 'Username not found. Try Register instead?';
+              authBtn.disabled = true;
+            } else {
+              status.innerHTML = '<span class="text-green-400">✓</span>';
+              hint.textContent = 'Username found! Click Sign In';
+              authBtn.disabled = false;
+            }
           } else {
-            status.innerHTML = '<span class="text-red-400">✗</span>';
-            hint.textContent = 'Username is already taken';
-            saveBtn.disabled = true;
+            // For register: username must be AVAILABLE
+            if (data.available) {
+              status.innerHTML = '<span class="text-green-400">✓</span>';
+              hint.textContent = 'Username is available!';
+              authBtn.disabled = false;
+            } else {
+              status.innerHTML = '<span class="text-red-400">✗</span>';
+              hint.textContent = 'Username already taken. Try Sign In?';
+              authBtn.disabled = true;
+            }
           }
         } catch (e) {
-          status.innerHTML = '';
-          hint.textContent = 'Could not check availability';
-          saveBtn.disabled = false; // Allow anyway
+          status.innerHTML = '<span class="text-yellow-400">?</span>';
+          hint.textContent = 'Could not check username';
+          authBtn.disabled = false;
         }
       }, 300);
     }
     
-    async function saveUsername() {
+    async function handleAuthAction() {
       const username = document.getElementById('usernameInput').value.trim();
       const displayName = document.getElementById('displayNameInput').value.trim();
       
@@ -1452,48 +1607,83 @@
       }
       
       try {
-        let res;
-        if (currentUser?.anonymous_id && !currentUser?.username) {
-          // Claim anonymous account
-          const params = new URLSearchParams({ username });
-          if (displayName) params.append('display_name', displayName);
-          
-          res = await fetch(`${API_BASE}/db/users/anonymous/${currentUser.anonymous_id}/claim?${params}`, {
-            method: 'POST'
-          });
-        } else if (currentUser?.id) {
-          // Update existing user
-          res = await fetch(`${API_BASE}/db/users/${currentUser.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, display_name: displayName || username })
-          });
-        } else {
-          // Create new user
-          res = await fetch(`${API_BASE}/db/users`, {
+        if (authMode === 'login') {
+          // Sign in - get existing user
+          const res = await fetch(`${API_BASE}/db/users/by-username/${encodeURIComponent(username)}`);
+          if (res.ok) {
+            currentUser = await res.json();
+            localStorage.setItem('kc_username', currentUser.username);
+            if (currentUser.anonymous_id) {
+              localStorage.setItem('kc_anonymous_id', currentUser.anonymous_id);
+            }
+            updateUserBadge();
+            closeUserModal();
+            templatesLoaded = false; // Reload templates for new user
+            console.log("[USER] Signed in as:", currentUser.username);
+          } else {
+            alert('Username not found. Try registering instead.');
+          }
+        } else if (authMode === 'register') {
+          // Register - create new user
+          const res = await fetch(`${API_BASE}/db/users`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, display_name: displayName || username })
+            body: JSON.stringify({ 
+              username, 
+              display_name: displayName || username 
+            })
           });
-        }
-        
-        if (res.ok) {
-          currentUser = await res.json();
-          localStorage.setItem('kc_username', currentUser.username);
-          if (currentUser.anonymous_id) {
-            localStorage.setItem('kc_anonymous_id', currentUser.anonymous_id);
+          
+          if (res.ok) {
+            currentUser = await res.json();
+            localStorage.setItem('kc_username', currentUser.username);
+            if (currentUser.anonymous_id) {
+              localStorage.setItem('kc_anonymous_id', currentUser.anonymous_id);
+            }
+            updateUserBadge();
+            closeUserModal();
+            templatesLoaded = false; // Reload templates for new user
+            console.log("[USER] Registered as:", currentUser.username);
+          } else {
+            const err = await res.json();
+            alert(err.detail || 'Failed to create account');
           }
-          updateUserBadge();
-          closeUserModal();
-          console.log("[USER] Saved user:", currentUser);
-        } else {
-          const err = await res.json();
-          alert(err.detail || 'Failed to save username');
+        } else if (authMode === 'profile') {
+          // Update profile
+          const res = await fetch(`${API_BASE}/db/users/${currentUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              username, 
+              display_name: displayName || username 
+            })
+          });
+          
+          if (res.ok) {
+            currentUser = await res.json();
+            localStorage.setItem('kc_username', currentUser.username);
+            updateUserBadge();
+            closeUserModal();
+            console.log("[USER] Updated profile:", currentUser.username);
+          } else {
+            const err = await res.json();
+            alert(err.detail || 'Failed to update profile');
+          }
         }
       } catch (e) {
-        console.error("[USER] Error saving:", e);
-        alert('Failed to save username');
+        console.error("[USER] Auth error:", e);
+        alert('Connection error. Please try again.');
       }
+    }
+    
+    function logoutUser() {
+      currentUser = null;
+      localStorage.removeItem('kc_username');
+      localStorage.removeItem('kc_anonymous_id');
+      updateUserBadge();
+      closeUserModal();
+      templatesLoaded = false; // Reload templates for anonymous state
+      console.log("[USER] Logged out");
     }
     
     // Initialize user on page load
@@ -1831,93 +2021,433 @@
     }
 
     // ----- Templates library view -----
+    let myTemplates = [];
+    let collectiveTemplates = [];
+    let collectiveSort = 'popular';
+    let collectiveSearchQuery = '';
+    
+    async function loadAllTemplates() {
+      await Promise.all([
+        loadMyTemplates(),
+        loadCollectiveTemplates()
+      ]);
+      templatesLoaded = true;
+      renderMyTemplates();
+      renderCollectiveTemplates();
+    }
+    
+    async function loadMyTemplates() {
+      myTemplates = [];
+      
+      // Try database first if user is logged in
+      if (currentUser?.id) {
+        try {
+          const res = await fetch(`${API_BASE}/db/templates?user_id=${currentUser.id}&include_public=false&include_system=false`);
+          if (res.ok) {
+            const data = await res.json();
+            myTemplates = data.map(t => ({
+              ...t,
+              source: 'database',
+              createdAt: t.created_at
+            }));
+            console.log("[TEMPLATES] Loaded", myTemplates.length, "personal templates from DB");
+          }
+        } catch (e) {
+          console.warn("[TEMPLATES] Failed to load from DB:", e);
+        }
+      }
+      
+      // Also load from legacy file API
+      try {
+        const res = await fetch(`${API_BASE}/list_templates`);
+        if (res.ok) {
+          const data = await res.json();
+          const fileTemplates = (data.templates || []).map(t => ({
+            ...t,
+            source: 'file'
+          }));
+          // Merge, avoiding duplicates by name
+          const existingNames = new Set(myTemplates.map(t => t.name.toLowerCase()));
+          fileTemplates.forEach(t => {
+            if (!existingNames.has(t.name.toLowerCase())) {
+              myTemplates.push(t);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("[TEMPLATES] Failed to load file templates:", e);
+      }
+      
+      // Keep legacy templates array in sync
+      templates = myTemplates;
+    }
+    
+    async function loadCollectiveTemplates() {
+      collectiveTemplates = [];
+      
+      try {
+        const params = new URLSearchParams({
+          sort_by: collectiveSort,
+          limit: '50'
+        });
+        if (collectiveSearchQuery) {
+          params.append('search', collectiveSearchQuery);
+        }
+        if (currentUser?.id) {
+          params.append('user_id', currentUser.id);
+        }
+        
+        const res = await fetch(`${API_BASE}/db/templates/collective?${params}`);
+        if (res.ok) {
+          collectiveTemplates = await res.json();
+          console.log("[TEMPLATES] Loaded", collectiveTemplates.length, "collective templates");
+        }
+      } catch (e) {
+        console.warn("[TEMPLATES] Failed to load collective templates:", e);
+      }
+    }
+    
     function renderTemplatesView() {
-      const listEl = $("templates-list");
-      const emptyEl = $("templates-empty");
-
-      if (!templates.length) {
+      // Load templates on first view or if not loaded
+      if (!templatesLoaded) {
+        loadAllTemplates(); // This will set templatesLoaded and render
+        return;
+      }
+      renderMyTemplates();
+      renderCollectiveTemplates();
+    }
+    
+    function renderMyTemplates() {
+      const listEl = $("my-templates-list");
+      const emptyEl = $("my-templates-empty");
+      const countEl = $("my-templates-count");
+      
+      countEl.textContent = myTemplates.length;
+      
+      if (!myTemplates.length) {
         emptyEl.classList.remove("hidden");
-        listEl.classList.add("hidden");
         listEl.innerHTML = "";
         return;
       }
-
+      
       emptyEl.classList.add("hidden");
-      listEl.classList.remove("hidden");
       listEl.innerHTML = "";
-
-      templates.forEach((t) => {
-        const card = document.createElement("div");
-        card.className =
-          "glass-soft border borderSoft rounded-lg px-4 py-3 flex items-start justify-between gap-4";
-
-        const left = document.createElement("div");
-        const nameDiv = document.createElement("div");
-        nameDiv.className = "text-sm font-mono text-accentCyan";
-        nameDiv.textContent = t.name;
-        left.appendChild(nameDiv);
-
-        const dateDiv = document.createElement("div");
-        dateDiv.className = "text-[0.65rem] font-mono text-slate-500";
-        dateDiv.textContent = "created: " + prettyDate(t.createdAt);
-        left.appendChild(dateDiv);
-
-        if (t.question) {
-          const qDiv = document.createElement("div");
-          qDiv.className = "mt-1 text-[0.7rem] text-slate-300 line-clamp-2";
-          qDiv.innerHTML =
-            "<span class='font-mono text-slate-400'>Q:</span> " + t.question;
-          left.appendChild(qDiv);
-        }
-
-        const right = document.createElement("div");
-        right.className =
-          "flex flex-col items-end gap-1.5 text-[0.7rem] font-mono";
-
-        const btnOpen = document.createElement("button");
-        btnOpen.className =
-          "px-2.5 py-1 rounded-md bg-slate-900 text-slate-100 border borderSoft hover:bg-slate-800";
-        btnOpen.textContent = "Open";
-        btnOpen.onclick = () => {
-          currentTemplate = { ...t };
-          schemaJSON = structuredClone(t.schema);
-          sectionExpanded = {};
-          showFullJSON = false;
-          $("nav-editor").classList.remove("hidden");
-          $("btn-open-current-from-question").classList.remove("hidden");
-          $("btn-open-current-from-library").classList.remove("hidden");
-          setView("editor");
-        };
-        right.appendChild(btnOpen);
-
-        const btnDup = document.createElement("button");
-        btnDup.className =
-          "px-2.5 py-1 rounded-md border borderSoft hover:bg-slate-900 text-slate-200";
-        btnDup.textContent = "Duplicate";
-        btnDup.onclick = () => {
-          const copy = {
-            ...t,
-            id: "tmp_" + Date.now(),
-            name: t.name + "_copy",
-            createdAt: new Date().toISOString(),
-          };
-          templates.push(copy);
-          renderTemplatesView();
-        };
-        right.appendChild(btnDup);
-
-        const btnExport = document.createElement("button");
-        btnExport.className =
-          "px-2.5 py-1 rounded-md border borderSoft hover:bg-slate-900 text-slate-200";
-        btnExport.textContent = "Export JSON";
-        btnExport.onclick = () =>
-          downloadJSON((t.name || "template") + ".json", t.schema);
-        right.appendChild(btnExport);
-
-        card.appendChild(left);
-        card.appendChild(right);
+      
+      myTemplates.forEach((t) => {
+        const card = createTemplateCard(t, 'personal');
         listEl.appendChild(card);
       });
+    }
+    
+    function renderCollectiveTemplates() {
+      const listEl = $("collective-templates-list");
+      const emptyEl = $("collective-templates-empty");
+      const countEl = $("collective-templates-count");
+      
+      countEl.textContent = collectiveTemplates.length;
+      
+      if (!collectiveTemplates.length) {
+        emptyEl.classList.remove("hidden");
+        listEl.innerHTML = "";
+        return;
+      }
+      
+      emptyEl.classList.add("hidden");
+      listEl.innerHTML = "";
+      
+      collectiveTemplates.forEach((t) => {
+        const card = createTemplateCard(t, 'collective');
+        listEl.appendChild(card);
+      });
+    }
+    
+    function createTemplateCard(t, type) {
+      const isPersonal = type === 'personal';
+      const accentColor = isPersonal ? 'accentPurple' : 'accentCyan';
+      const borderClass = isPersonal ? 'border-accentPurple/30 hover:border-accentPurple/60' : 'border-accentCyan/30 hover:border-accentCyan/60';
+      const bgClass = isPersonal ? 'from-purple-950/30 to-slate-900/50' : 'from-cyan-950/30 to-slate-900/50';
+      
+      const card = document.createElement("div");
+      card.className = `rounded-xl border ${borderClass} bg-gradient-to-br ${bgClass} p-4 transition-all hover:shadow-lg cursor-pointer group`;
+      
+      // Header with name and badges
+      const header = document.createElement("div");
+      header.className = "flex items-start justify-between mb-2";
+      
+      const nameDiv = document.createElement("div");
+      nameDiv.className = `font-semibold text-${accentColor} group-hover:underline`;
+      nameDiv.textContent = t.name;
+      header.appendChild(nameDiv);
+      
+      const badges = document.createElement("div");
+      badges.className = "flex items-center gap-1";
+      
+      if (t.is_public && isPersonal) {
+        const publicBadge = document.createElement("span");
+        publicBadge.className = "px-1.5 py-0.5 rounded text-[0.6rem] font-mono bg-accentCyan/20 text-accentCyan";
+        publicBadge.textContent = "PUBLIC";
+        badges.appendChild(publicBadge);
+      }
+      
+      if (t.is_featured) {
+        const featuredBadge = document.createElement("span");
+        featuredBadge.className = "px-1.5 py-0.5 rounded text-[0.6rem] font-mono bg-yellow-500/20 text-yellow-400";
+        featuredBadge.textContent = "⭐";
+        badges.appendChild(featuredBadge);
+      }
+      
+      header.appendChild(badges);
+      card.appendChild(header);
+      
+      // Question preview
+      if (t.question) {
+        const qDiv = document.createElement("div");
+        qDiv.className = "text-xs text-slate-400 line-clamp-2 mb-3";
+        qDiv.textContent = t.question;
+        card.appendChild(qDiv);
+      } else if (t.description) {
+        const descDiv = document.createElement("div");
+        descDiv.className = "text-xs text-slate-400 line-clamp-2 mb-3";
+        descDiv.textContent = t.description;
+        card.appendChild(descDiv);
+      }
+      
+      // Footer with stats and actions
+      const footer = document.createElement("div");
+      footer.className = "flex items-center justify-between mt-auto pt-2 border-t border-slate-700/50";
+      
+      const stats = document.createElement("div");
+      stats.className = "flex items-center gap-3 text-[0.65rem] text-slate-500";
+      
+      if (!isPersonal && t.owner_name) {
+        const authorSpan = document.createElement("span");
+        authorSpan.textContent = `by @${t.owner_name}`;
+        stats.appendChild(authorSpan);
+      }
+      
+      if (t.use_count > 0) {
+        const usesSpan = document.createElement("span");
+        usesSpan.textContent = `${t.use_count} uses`;
+        stats.appendChild(usesSpan);
+      }
+      
+      if (t.fork_count > 0) {
+        const forksSpan = document.createElement("span");
+        forksSpan.textContent = `${t.fork_count} forks`;
+        stats.appendChild(forksSpan);
+      }
+      
+      const dateSpan = document.createElement("span");
+      dateSpan.textContent = prettyDate(t.createdAt || t.created_at);
+      stats.appendChild(dateSpan);
+      
+      footer.appendChild(stats);
+      
+      // Action buttons
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-1";
+      
+      if (isPersonal) {
+        // Open button
+        const btnOpen = document.createElement("button");
+        btnOpen.className = `px-2 py-1 rounded text-xs font-mono bg-${accentColor}/20 text-${accentColor} hover:bg-${accentColor}/30`;
+        btnOpen.textContent = "Open";
+        btnOpen.onclick = (e) => {
+          e.stopPropagation();
+          openTemplate(t);
+        };
+        actions.appendChild(btnOpen);
+        
+        // Share toggle
+        const btnShare = document.createElement("button");
+        btnShare.className = `px-2 py-1 rounded text-xs font-mono border border-slate-600 text-slate-400 hover:bg-slate-800`;
+        btnShare.textContent = t.is_public ? "Unshare" : "Share";
+        btnShare.onclick = (e) => {
+          e.stopPropagation();
+          toggleTemplatePublic(t);
+        };
+        actions.appendChild(btnShare);
+        
+        // Delete button
+        const btnDelete = document.createElement("button");
+        btnDelete.className = "px-2 py-1 rounded text-xs font-mono text-red-400 hover:bg-red-400/10";
+        btnDelete.textContent = "✕";
+        btnDelete.onclick = (e) => {
+          e.stopPropagation();
+          deleteTemplate(t);
+        };
+        actions.appendChild(btnDelete);
+      } else {
+        // Fork button for collective
+        const btnFork = document.createElement("button");
+        btnFork.className = `px-2 py-1 rounded text-xs font-mono bg-${accentColor}/20 text-${accentColor} hover:bg-${accentColor}/30`;
+        btnFork.textContent = "Fork";
+        btnFork.onclick = (e) => {
+          e.stopPropagation();
+          forkTemplate(t);
+        };
+        actions.appendChild(btnFork);
+        
+        // Preview/Open button
+        const btnOpen = document.createElement("button");
+        btnOpen.className = "px-2 py-1 rounded text-xs font-mono border border-slate-600 text-slate-400 hover:bg-slate-800";
+        btnOpen.textContent = "Preview";
+        btnOpen.onclick = (e) => {
+          e.stopPropagation();
+          openTemplate(t);
+        };
+        actions.appendChild(btnOpen);
+        
+        // Like button
+        if (currentUser?.id) {
+          const btnLike = document.createElement("button");
+          btnLike.className = `px-2 py-1 rounded text-xs ${t.is_liked ? 'text-red-400' : 'text-slate-500 hover:text-red-400'}`;
+          btnLike.innerHTML = t.is_liked ? '❤️' : '🤍';
+          btnLike.onclick = (e) => {
+            e.stopPropagation();
+            toggleTemplateLike(t);
+          };
+          actions.appendChild(btnLike);
+        }
+      }
+      
+      footer.appendChild(actions);
+      card.appendChild(footer);
+      
+      // Click on card to open
+      card.onclick = () => openTemplate(t);
+      
+      return card;
+    }
+    
+    function openTemplate(t) {
+      currentTemplate = {
+        id: t.id,
+        name: t.name,
+        question: t.question || '',
+        createdAt: t.createdAt || t.created_at,
+        schema: t.schema,
+        source: t.source,
+        db_id: t.source === 'database' ? t.id : null
+      };
+      schemaJSON = structuredClone(t.schema);
+      sectionExpanded = {};
+      showFullJSON = false;
+      $("nav-editor").classList.remove("hidden");
+      $("btn-open-current-from-question").classList.remove("hidden");
+      $("btn-open-current-from-library").classList.remove("hidden");
+      
+      // Record usage if from collective
+      if (t.source === 'database' || t.id) {
+        fetch(`${API_BASE}/db/templates/${t.id}/use`, { method: 'POST' }).catch(() => {});
+      }
+      
+      setView("editor");
+    }
+    
+    async function toggleTemplatePublic(t) {
+      if (!currentUser?.id) {
+        alert("Please sign in to share templates");
+        return;
+      }
+      
+      try {
+        if (t.source === 'database' && t.id) {
+          const res = await fetch(`${API_BASE}/db/templates/${t.id}?user_id=${currentUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_public: !t.is_public })
+          });
+          if (res.ok) {
+            t.is_public = !t.is_public;
+            await loadAllTemplates();
+          } else if (res.status === 403) {
+            alert("You can only share templates you created. Try forking this template first.");
+          } else {
+            const err = await res.json();
+            alert(err.detail || "Failed to update template");
+          }
+        } else {
+          alert("Save template to database first to share it");
+        }
+      } catch (e) {
+        console.error("[TEMPLATES] Failed to toggle public:", e);
+      }
+    }
+    
+    async function deleteTemplate(t) {
+      if (!confirm(`Delete template "${t.name}"?`)) return;
+      
+      try {
+        if (t.source === 'database' && t.id && currentUser?.id) {
+          const res = await fetch(`${API_BASE}/db/templates/${t.id}?user_id=${currentUser.id}`, {
+            method: 'DELETE'
+          });
+          if (!res.ok) throw new Error("Delete failed");
+        }
+        
+        // Remove from local array
+        myTemplates = myTemplates.filter(mt => mt.id !== t.id);
+        templates = myTemplates;
+        renderMyTemplates();
+      } catch (e) {
+        console.error("[TEMPLATES] Failed to delete:", e);
+        alert("Failed to delete template");
+      }
+    }
+    
+    async function forkTemplate(t) {
+      if (!currentUser?.id) {
+        alert("Please sign in to fork templates");
+        openUserModal();
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE}/db/templates/${t.id}/fork?user_id=${currentUser.id}`, {
+          method: 'POST'
+        });
+        
+        if (res.ok) {
+          const forked = await res.json();
+          alert(`Template forked! "${forked.name}" added to your library.`);
+          await loadAllTemplates();
+        } else {
+          throw new Error("Fork failed");
+        }
+      } catch (e) {
+        console.error("[TEMPLATES] Failed to fork:", e);
+        alert("Failed to fork template");
+      }
+    }
+    
+    async function toggleTemplateLike(t) {
+      if (!currentUser?.id) return;
+      
+      try {
+        const method = t.is_liked ? 'DELETE' : 'POST';
+        await fetch(`${API_BASE}/db/templates/${t.id}/like?user_id=${currentUser.id}`, { method });
+        t.is_liked = !t.is_liked;
+        renderCollectiveTemplates();
+      } catch (e) {
+        console.error("[TEMPLATES] Failed to toggle like:", e);
+      }
+    }
+    
+    function filterCollectiveTemplates(query) {
+      collectiveSearchQuery = query;
+      loadCollectiveTemplates().then(renderCollectiveTemplates);
+    }
+    
+    function sortCollectiveTemplates(sortBy) {
+      collectiveSort = sortBy;
+      
+      // Update button states
+      document.querySelectorAll('.collective-sort-btn').forEach(btn => {
+        btn.dataset.active = btn.dataset.sort === sortBy ? 'true' : 'false';
+      });
+      
+      loadCollectiveTemplates().then(renderCollectiveTemplates);
     }
 
     async function saveCurrentTemplate() {
@@ -1929,6 +2459,70 @@
         currentTemplate.name ||
         "unnamed_template_" + Date.now();
 
+      // Save to database if user is logged in
+      if (currentUser?.id) {
+        try {
+          let savedTemplate;
+          
+          // Check if this template exists in database already
+          if (currentTemplate.db_id) {
+            // Update existing template
+            const res = await fetch(`${API_BASE}/db/templates/${currentTemplate.db_id}?user_id=${currentUser.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: name,
+                schema: schemaJSON
+              })
+            });
+            if (res.ok) {
+              savedTemplate = await res.json();
+              console.log("[TEMPLATES] Template updated in database:", savedTemplate.id);
+            } else {
+              throw new Error("Failed to update template");
+            }
+          } else {
+            // Create new template in database
+            const res = await fetch(`${API_BASE}/db/templates?user_id=${currentUser.id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: name,
+                question: currentTemplate.question || '',
+                schema: schemaJSON,
+                is_public: false
+              })
+            });
+            if (res.ok) {
+              savedTemplate = await res.json();
+              console.log("[TEMPLATES] Template saved to database:", savedTemplate.id);
+            } else {
+              throw new Error("Failed to save template");
+            }
+          }
+          
+          // Update current template with database info
+          currentTemplate = {
+            ...currentTemplate,
+            id: savedTemplate.id,
+            db_id: savedTemplate.id,
+            name: savedTemplate.name,
+            schema: savedTemplate.schema,
+            source: 'database',
+            createdAt: savedTemplate.created_at
+          };
+          
+          alert(`Template "${name}" saved to your library!`);
+          await loadAllTemplates();
+          renderTemplatesView();
+          return;
+        } catch (err) {
+          console.error("[TEMPLATES] Database save failed:", err);
+          // Fall through to legacy file save
+        }
+      }
+
+      // Legacy: Save to file system (for anonymous users or as fallback)
       const existingIdx = templates.findIndex((t) => t.id === currentTemplate.id);
       const updated = {
         ...currentTemplate,
