@@ -308,7 +308,17 @@
             Design templates, then run synthesis pipelines over your PDFs.
           </div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
+          <!-- User Badge -->
+          <button
+            id="userBadge"
+            onclick="openUserModal()"
+            class="px-3 py-1.5 text-[0.7rem] font-mono rounded-lg border border-slate-600 hover:border-accentPurple transition-all flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800">
+            <svg class="w-4 h-4 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+            </svg>
+            <span id="userDisplayName" class="text-slate-300">Guest</span>
+          </button>
           <button
             class="neon-pill px-3 py-1.5 text-[0.7rem] font-mono text-slate-50 flex items-center gap-1 shadow-neon">
             <span class="text-accentCyan">●</span>
@@ -316,6 +326,65 @@
           </button>
         </div>
       </header>
+
+      <!-- Username Modal -->
+      <div id="userModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div class="glass-soft rounded-xl p-6 w-full max-w-md mx-4 shadow-neon">
+          <h3 class="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-accentPurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+            </svg>
+            Your Profile
+          </h3>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-mono text-slate-400 mb-1">Username</label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="usernameInput"
+                  placeholder="Enter a username..."
+                  class="flex-1 px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm focus:border-accentPurple focus:outline-none"
+                  oninput="checkUsernameAvailability(this.value)"
+                />
+                <span id="usernameStatus" class="flex items-center px-2 text-xs"></span>
+              </div>
+              <p id="usernameHint" class="mt-1 text-xs text-slate-500">Choose a username to save your templates & cards</p>
+            </div>
+            
+            <div>
+              <label class="block text-xs font-mono text-slate-400 mb-1">Display Name (optional)</label>
+              <input
+                type="text"
+                id="displayNameInput"
+                placeholder="How should we call you?"
+                class="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm focus:border-accentPurple focus:outline-none"
+              />
+            </div>
+          </div>
+          
+          <div class="flex gap-3 mt-6">
+            <button
+              onclick="closeUserModal()"
+              class="flex-1 px-4 py-2 rounded-lg border border-slate-600 text-slate-400 text-sm hover:bg-slate-800 transition-colors">
+              Cancel
+            </button>
+            <button
+              id="saveUserBtn"
+              onclick="saveUsername()"
+              class="flex-1 px-4 py-2 rounded-lg bg-accentPurple text-white text-sm font-medium hover:bg-accentPurple/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              Save
+            </button>
+          </div>
+          
+          <div id="userInfo" class="mt-4 pt-4 border-t border-slate-700 hidden">
+            <p class="text-xs text-slate-500">
+              User ID: <span id="userIdDisplay" class="font-mono text-slate-400"></span>
+            </p>
+          </div>
+        </div>
+      </div>
 
       <!-- View: Welcome -->
       <section id="view-welcome" class="flex-1 overflow-auto">
@@ -1213,6 +1282,9 @@
     let schemaJSON = null;
     let sectionExpanded = {}; // key -> bool
     let showFullJSON = false;
+    
+    // User state
+    let currentUser = null; // {id, username, display_name, anonymous_id}
 
     // Auto-detect API base URL: use localhost for local dev (including file://), or production URL
     const isLocal = !window.location.hostname || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
@@ -1222,7 +1294,212 @@
     
     console.log("[DEBUG] hostname:", window.location.hostname, "| isLocal:", isLocal, "| API_BASE:", API_BASE);
 
-    // ----- Session ID for user isolation -----
+    // ----- User Management -----
+    async function initUser() {
+      // Check if we have a saved username
+      const savedUsername = localStorage.getItem('kc_username');
+      const savedAnonymousId = localStorage.getItem('kc_anonymous_id');
+      
+      if (savedUsername) {
+        // Try to get user by username
+        try {
+          const res = await fetch(`${API_BASE}/db/users/by-username/${encodeURIComponent(savedUsername)}`);
+          if (res.ok) {
+            currentUser = await res.json();
+            updateUserBadge();
+            console.log("[USER] Loaded user by username:", currentUser.username);
+            return;
+          }
+        } catch (e) {
+          console.warn("[USER] Failed to load user by username:", e);
+        }
+      }
+      
+      if (savedAnonymousId) {
+        // Try to get user by anonymous ID
+        try {
+          const res = await fetch(`${API_BASE}/db/users/anonymous/${savedAnonymousId}`);
+          if (res.ok) {
+            currentUser = await res.json();
+            updateUserBadge();
+            console.log("[USER] Loaded anonymous user:", currentUser.id);
+            return;
+          }
+        } catch (e) {
+          console.warn("[USER] Failed to load anonymous user:", e);
+        }
+      }
+      
+      // Create new anonymous user
+      try {
+        const res = await fetch(`${API_BASE}/db/users/anonymous`, { method: 'POST' });
+        if (res.ok) {
+          currentUser = await res.json();
+          localStorage.setItem('kc_anonymous_id', currentUser.anonymous_id);
+          updateUserBadge();
+          console.log("[USER] Created anonymous user:", currentUser.anonymous_id);
+        }
+      } catch (e) {
+        console.warn("[USER] Failed to create anonymous user (DB might not be configured):", e);
+        // Fallback: work without database
+        currentUser = null;
+      }
+    }
+    
+    function updateUserBadge() {
+      const badge = document.getElementById('userDisplayName');
+      if (!badge) return;
+      
+      if (currentUser?.username) {
+        badge.textContent = '@' + currentUser.username;
+        badge.classList.remove('text-slate-300');
+        badge.classList.add('text-accentPurple');
+      } else if (currentUser?.display_name) {
+        badge.textContent = currentUser.display_name;
+      } else {
+        badge.textContent = 'Guest';
+        badge.classList.remove('text-accentPurple');
+        badge.classList.add('text-slate-300');
+      }
+    }
+    
+    function openUserModal() {
+      const modal = document.getElementById('userModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      
+      // Pre-fill if user exists
+      if (currentUser) {
+        document.getElementById('usernameInput').value = currentUser.username || '';
+        document.getElementById('displayNameInput').value = currentUser.display_name || '';
+        
+        if (currentUser.id) {
+          document.getElementById('userIdDisplay').textContent = currentUser.id;
+          document.getElementById('userInfo').classList.remove('hidden');
+        }
+      }
+    }
+    
+    function closeUserModal() {
+      const modal = document.getElementById('userModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    
+    let usernameCheckTimeout = null;
+    async function checkUsernameAvailability(username) {
+      const status = document.getElementById('usernameStatus');
+      const hint = document.getElementById('usernameHint');
+      const saveBtn = document.getElementById('saveUserBtn');
+      
+      // Clear previous timeout
+      if (usernameCheckTimeout) clearTimeout(usernameCheckTimeout);
+      
+      if (!username || username.length < 2) {
+        status.innerHTML = '';
+        hint.textContent = 'Username must be at least 2 characters';
+        saveBtn.disabled = true;
+        return;
+      }
+      
+      // Validate format (alphanumeric + underscore only)
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        status.innerHTML = '<span class="text-red-400">✗</span>';
+        hint.textContent = 'Only letters, numbers, and underscores allowed';
+        saveBtn.disabled = true;
+        return;
+      }
+      
+      // If it's the current user's username, it's fine
+      if (currentUser?.username === username) {
+        status.innerHTML = '<span class="text-green-400">✓</span>';
+        hint.textContent = 'This is your current username';
+        saveBtn.disabled = false;
+        return;
+      }
+      
+      // Debounce the API call
+      status.innerHTML = '<span class="text-slate-400">...</span>';
+      usernameCheckTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/db/users/check-username/${encodeURIComponent(username)}`);
+          const data = await res.json();
+          
+          if (data.available) {
+            status.innerHTML = '<span class="text-green-400">✓</span>';
+            hint.textContent = 'Username is available!';
+            saveBtn.disabled = false;
+          } else {
+            status.innerHTML = '<span class="text-red-400">✗</span>';
+            hint.textContent = 'Username is already taken';
+            saveBtn.disabled = true;
+          }
+        } catch (e) {
+          status.innerHTML = '';
+          hint.textContent = 'Could not check availability';
+          saveBtn.disabled = false; // Allow anyway
+        }
+      }, 300);
+    }
+    
+    async function saveUsername() {
+      const username = document.getElementById('usernameInput').value.trim();
+      const displayName = document.getElementById('displayNameInput').value.trim();
+      
+      if (!username || username.length < 2) {
+        alert('Please enter a valid username');
+        return;
+      }
+      
+      try {
+        let res;
+        if (currentUser?.anonymous_id && !currentUser?.username) {
+          // Claim anonymous account
+          const params = new URLSearchParams({ username });
+          if (displayName) params.append('display_name', displayName);
+          
+          res = await fetch(`${API_BASE}/db/users/anonymous/${currentUser.anonymous_id}/claim?${params}`, {
+            method: 'POST'
+          });
+        } else if (currentUser?.id) {
+          // Update existing user
+          res = await fetch(`${API_BASE}/db/users/${currentUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, display_name: displayName || username })
+          });
+        } else {
+          // Create new user
+          res = await fetch(`${API_BASE}/db/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, display_name: displayName || username })
+          });
+        }
+        
+        if (res.ok) {
+          currentUser = await res.json();
+          localStorage.setItem('kc_username', currentUser.username);
+          if (currentUser.anonymous_id) {
+            localStorage.setItem('kc_anonymous_id', currentUser.anonymous_id);
+          }
+          updateUserBadge();
+          closeUserModal();
+          console.log("[USER] Saved user:", currentUser);
+        } else {
+          const err = await res.json();
+          alert(err.detail || 'Failed to save username');
+        }
+      } catch (e) {
+        console.error("[USER] Error saving:", e);
+        alert('Failed to save username');
+      }
+    }
+    
+    // Initialize user on page load
+    initUser();
+
+    // ----- Session ID for user isolation (legacy, kept for folder naming) -----
     function getSessionId() {
       let sessionId = localStorage.getItem('kc_session_id');
       if (!sessionId) {

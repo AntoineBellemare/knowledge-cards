@@ -8,6 +8,10 @@ import shutil
 import asyncio
 from pathlib import Path
 
+# Load .env file before other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -84,6 +88,22 @@ class RunGeminiResponse(BaseModel):
 # ---------- FastAPI app ----------
 
 app = FastAPI(title="Knowledge Cards API")
+
+# ---------- Database initialization ----------
+from database import init_db, engine
+from db_routes import router as db_router
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database tables on startup."""
+    if engine is not None:
+        init_db()
+        print("✅ Database connected and initialized")
+    else:
+        print("⚠️  Running without database (DATABASE_URL not set)")
+
+# Include database routes
+app.include_router(db_router)
 
 # CORS: Allow local development and production domains
 ALLOWED_ORIGINS = [

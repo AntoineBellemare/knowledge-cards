@@ -25,3 +25,7 @@ fastapi>=0.109,<1
 uvicorn[standard]>=0.27,<1
 pydantic>=2,<3
 python-multipart>=0.0.6  # Required for file uploads
+
+# Database (Railway PostgreSQL)
+sqlalchemy>=2.0,<3
+psycopg2-binary>=2.9,<3
