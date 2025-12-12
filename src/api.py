@@ -61,26 +61,24 @@ def save_run_to_database(
         
         # Read JSONL and save individual cards
         jsonl_file = Path(jsonl_path)
+        order_idx = 0
         if jsonl_file.exists():
             with open(jsonl_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     if line.strip():
                         try:
                             card_data = json.loads(line)
-                            # Extract title from metadata or filename
-                            title = "Unknown"
-                            if "metadata" in card_data and "title" in card_data["metadata"]:
-                                title = card_data["metadata"]["title"]
-                            elif "source_pdf" in card_data:
-                                title = card_data["source_pdf"].replace('.pdf', '')
+                            # Source file from _file field
+                            source_file = card_data.get("_file", "")
                             
                             card = Card(
                                 collection_id=collection.id,
-                                source_pdf=card_data.get("source_pdf", ""),
-                                title=title,
-                                content=card_data
+                                source_file=source_file,
+                                content=card_data,
+                                order_index=order_idx
                             )
                             db.add(card)
+                            order_idx += 1
                         except json.JSONDecodeError:
                             continue
         

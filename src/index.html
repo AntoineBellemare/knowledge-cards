@@ -3784,11 +3784,20 @@
           const res = await fetch(`${API_BASE}/db/collections/${collectionId}/cards`);
           if (res.ok) {
             const dbCards = await res.json();
-            cards = dbCards.map((c, i) => ({
-              index: i,
-              card: c.content,
-              title: c.title || `Paper ${i + 1}`
-            }));
+            cards = dbCards.map((c, i) => {
+              // Extract title from content (try citation.title, then _file, then fallback)
+              const content = c.content || {};
+              let title = content?.citation?.title || 
+                          content?.document_metadata?.title ||
+                          content?._file?.replace('.pdf', '') ||
+                          c.source_file?.replace('.pdf', '') ||
+                          `Paper ${i + 1}`;
+              return {
+                index: i,
+                card: content,
+                title: title
+              };
+            });
           }
         } else {
           // Load from file (strip 'file:' prefix if present)
