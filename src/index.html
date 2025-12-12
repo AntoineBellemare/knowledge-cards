@@ -3930,7 +3930,7 @@
             const res = await fetch(`${API_BASE}/db/collections/${collectionId}/metacard`);
             if (res.ok) {
               const metaCard = await res.json();
-              card = metaCard.synthesis;
+              card = metaCard.content;  // Fixed: was 'synthesis', should be 'content'
             } else {
               throw new Error("No meta-card found for this collection");
             }
