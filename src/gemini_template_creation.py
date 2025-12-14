@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from collections import defaultdict
+import threading
 
 import fitz  # PyMuPDF
 import pandas as pd
@@ -34,6 +35,17 @@ from google.api_core.exceptions import ResourceExhausted, GoogleAPIError, Deadli
 
 from cards_to_pdf import build_pdf  # <- use the build_pdf you showed
 from generate_meta_card_UI import load_schemas_from_file, generate_meta_card, generate_speculation
+
+# Thread-local storage for cancellation check
+_thread_locals = threading.local()
+
+def set_cancellation_check(check_func):
+    """Set the cancellation check function for the current thread."""
+    _thread_locals.cancellation_check = check_func
+
+def get_cancellation_check():
+    """Get the cancellation check function for the current thread."""
+    return getattr(_thread_locals, 'cancellation_check', None)
 
 
 
@@ -236,6 +248,11 @@ def init_gemini():
     genai.configure(api_key=api_key)
 
 def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> Dict[str, Any]:
+    # Check for cancellation before making API call
+    check_func = get_cancellation_check()
+    if check_func and check_func():
+        raise RuntimeError("Job cancelled by user")
+    
     m = genai.GenerativeModel(
         model,
         system_instruction=system_msg,
@@ -243,6 +260,10 @@ def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> D
     )
     last_err = None
     for t in range(retries):
+        # Check cancellation before each retry
+        if check_func and check_func():
+            raise RuntimeError("Job cancelled by user")
+        
         try:
             # print(f"[Gemini] Call attempt {t+1}/{retries} with model={model}...")
             print(f"[Gemini] Prompt length: {len(user_msg.split())} words, {len(user_msg)} chars")
@@ -464,15 +485,20 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
     return words <= MAX_INPUT_TOKENS
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
-                       global_progress: dict = None) -> Dict[str, Any]:
+                       global_progress: dict = None, cancellation_check=None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
     progress_callback(stage: str, current: int, total: int, message: str)
     global_progress: dict with 'current', 'total', 'pdf_name' for global tracking
+    cancellation_check: Optional callable that returns True if job should be cancelled
     """
-    def report_progress(message):
-        if progress_callback and global_progress:
+    def report_progress(message, current=None, total=None):
+        # If current and total are provided (for chunk tracking), use them
+        # Otherwise use global progress tracking
+        if current is not None and total is not None and progress_callback:
+            progress_callback("process", current, total, message)
+        elif progress_callback and global_progress:
             global_progress['current'] += 1
             progress_callback(
                 "process", 
@@ -503,31 +529,31 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     chunks = build_chunks(sections)
     total_chunks = len(chunks)
     
-    # Dynamically adjust total if we have more chunks than estimated
-    if global_progress:
-        # Add extra work units if actual chunks exceed what we estimated
-        estimated_reductions = 0
-        if total_chunks > 4:
-            estimated_reductions = (total_chunks + 3) // 4
-            if estimated_reductions > 4:
-                estimated_reductions += (estimated_reductions + 3) // 4
-        actual_work = total_chunks + estimated_reductions + 1
-        # If actual is higher than remaining estimated, boost the total
-        remaining_estimated = global_progress['total'] - global_progress['current']
-        if actual_work > remaining_estimated:
-            extra = actual_work - remaining_estimated
-            global_progress['total'] += extra
-            print(f"[PROGRESS] Adjusted total: +{extra} units for {pdf_path.name} ({total_chunks} chunks)")
-    
     partials = []
     for idx, ch in enumerate(chunks):
-        section_preview = ch['section'][:30].replace('\n', ' ')
-        report_progress(f"{pdf_path.name}: chunk {idx+1}/{total_chunks}")
+        # Check for cancellation before each chunk
+        if cancellation_check and cancellation_check():
+            raise RuntimeError("Job cancelled by user")
+        
+        # Report progress with chunk info visible to user
+        report_progress(
+            f"{pdf_path.name} ({total_chunks} chunks): chunk {idx+1}/{total_chunks}",
+            current=idx + 1,
+            total=total_chunks
+        )
         user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+            
+            # Check for cancellation immediately after API call completes
+            if cancellation_check and cancellation_check():
+                raise RuntimeError("Job cancelled by user")
+            
             partials.append(part)
         except Exception as e:
+            # Re-raise cancellation errors immediately
+            if "cancelled" in str(e).lower():
+                raise
             print(f"[WARN|chunk] {pdf_path.name} chunk {idx+1}: {e}")
             continue
 
@@ -544,12 +570,12 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         print(f"[PIPELINE] {pdf_path.name}: card built via fallback single-pass.")
         return data
 
-    report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks...")
+    report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks into final card...")
     
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, 
-                                  progress_callback=progress_callback, global_progress=global_progress)
+                                  progress_callback=progress_callback, global_progress=None)
     else:
         # Single-pass reduction for shorter documents
         user = prompt_reduce(schema, title, pdf_path.name, partials)
@@ -801,6 +827,7 @@ def run_gemini_cards_with_progress(
     progress_callback=None,
     schema_data: Optional[Dict[str, Any]] = None,
     template_question: Optional[str] = None,
+    cancellation_check=None,
 ) -> Tuple[Path, Path, Path]:
     """
     Same as run_gemini_cards but with progress callbacks for real-time updates.
@@ -808,7 +835,11 @@ def run_gemini_cards_with_progress(
     progress_callback(stage: str, current: int, total: int, message: str)
     schema_data: If provided, use this schema directly instead of loading from file.
     template_question: The original question that generated the template schema.
+    cancellation_check: Optional callable that returns True if job should be cancelled.
     """
+    # Set cancellation check in thread-local storage so it's accessible everywhere
+    set_cancellation_check(cancellation_check)
+    
     def report(stage: str, current: int, total: int, message: str):
         if progress_callback:
             progress_callback(stage, current, total, message)
@@ -851,52 +882,45 @@ def run_gemini_cards_with_progress(
     cards: List[Dict[str, Any]] = []
     rows: List[Dict[str, Any]] = []
 
-    # Pre-scan to estimate total work units
-    report("scan", 0, total_pdfs, f"Scanning {total_pdfs} PDFs...")
-    total_work_units = 0
-    pdf_work_estimates = []
-    for pdf in pdfs:
-        try:
-            # Quick estimate: based on file size
-            # Use 20KB per chunk (more conservative - text-heavy PDFs have more chunks)
-            file_size = pdf.stat().st_size
-            estimated_chunks = max(1, file_size // 20000)
-            # Add estimated reduction batches (for large docs: chunks/4 batches, then recursive)
-            estimated_reductions = 0
-            if estimated_chunks > 4:
-                # First level: chunks/4 batches
-                estimated_reductions = (estimated_chunks + 3) // 4
-                # Second level reduction if needed
-                if estimated_reductions > 4:
-                    estimated_reductions += (estimated_reductions + 3) // 4
-                # Third level if very large
-                if estimated_reductions > 16:
-                    estimated_reductions += (estimated_reductions + 3) // 4
-            estimated_work = estimated_chunks + estimated_reductions + 1  # +1 for final merge
-            pdf_work_estimates.append(estimated_work)
-            total_work_units += estimated_work
-        except:
-            pdf_work_estimates.append(5)
-            total_work_units += 5
+    # Simple progress tracking: each PDF is a unit, subdivide progress within each
+    report("scan", 0, total_pdfs, f"Found {total_pdfs} PDFs to process")
     
-    # Add work units for saving and meta-card
-    total_work_units += 5  # Saving files
-    total_work_units += 3  # Meta-card generation
-    
-    report("scan", total_pdfs, total_pdfs, f"Estimated {total_work_units} work units")
-    
-    # Global progress tracker
-    global_progress = {'current': 0, 'total': total_work_units}
+    # Global progress tracker - use PDF count as base, each PDF worth 100 points
+    global_progress = {
+        'current': 0, 
+        'total': total_pdfs * 100,  # Simple: each PDF is 100 points
+        'current_pdf': 0
+    }
 
     for idx, pdf in enumerate(pdfs):
-        report("process", global_progress['current'], total_work_units, f"Processing: {pdf.name}")
+        # Check for cancellation before processing each PDF
+        if cancellation_check and cancellation_check():
+            raise RuntimeError("Job cancelled by user")
+        
+        global_progress['current_pdf'] = idx
+        pdf_base_progress = idx * 100  # Starting point for this PDF
+        
+        report("process", pdf_base_progress, global_progress['total'], f"Processing {idx+1}/{total_pdfs}: {pdf.name}")
+        
         try:
-            card = build_card_for_pdf(pdf, schema, progress_callback=progress_callback, global_progress=global_progress)
+            # Wrapper for progress callback that includes PDF context and chunk info
+            def pdf_progress_callback(stage: str, current: int, total: int, message: str):
+                if total > 0:
+                    # Map chunk progress (current/total) to this PDF's allocated range (0-100)
+                    pdf_percent = (current / total) * 100
+                    overall_current = pdf_base_progress + int(pdf_percent)
+                    # Pass the detailed message through (includes chunk info)
+                    progress_callback(stage, overall_current, global_progress['total'], message)
+            
+            card = build_card_for_pdf(
+                pdf, schema, 
+                progress_callback=pdf_progress_callback, 
+                global_progress=None,
+                cancellation_check=cancellation_check
+            )
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
-            # Still increment progress on failure
-            global_progress['current'] += pdf_work_estimates[idx]
             continue
 
         try:
@@ -911,8 +935,9 @@ def run_gemini_cards_with_progress(
     folder_stem = Path(papers_folder).name
     base_name   = f"cards_{schema_stem}__{folder_stem}"
 
-    global_progress['current'] += 1
-    report("save", global_progress['current'], total_work_units, "Saving JSONL...")
+    # Saving files - last 5% of progress
+    save_progress_base = total_pdfs * 100
+    report("save", save_progress_base, save_progress_base + 5, "Saving JSONL...")
     jsonl_path = RESULTS_DIR / f"{base_name}.jsonl"
     csv_path   = RESULTS_DIR / f"{base_name}_summary.csv"
 
@@ -923,31 +948,28 @@ def run_gemini_cards_with_progress(
                 c["_template_question"] = template_question
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
-    report("save", global_progress['current'], total_work_units, "Saving CSV...")
+    report("save", save_progress_base + 1, save_progress_base + 5, "Saving CSV...")
     pd.DataFrame(rows).to_csv(csv_path, index=False)
 
-    report("save", global_progress['current'], total_work_units, "Generating PDF...")
+    report("save", save_progress_base + 2, save_progress_base + 5, "Generating PDF...")
     pdf_path = RESULTS_DIR / f"{base_name}.pdf"
     build_pdf(jsonl_path, pdf_path)
 
     # --- META-CARD with SPECULATION ---
-    global_progress['current'] += 1
-    report("meta", global_progress['current'], total_work_units, "Building meta-card with speculative synthesis...")
+    report("meta", save_progress_base + 3, save_progress_base + 5, "Building meta-card...")
     try:
         schemas_for_meta = load_schemas_from_file(jsonl_path)
         meta_card = generate_meta_card(
             schemas_for_meta,
             model=model or GEMINI_MODEL,
-            question=template_question,  # Pass question for speculative synthesis
+            question=template_question,
             include_speculation=True,
         )
         
-        # Add the original question to the meta-card if available
         if template_question:
             meta_card["_template_question"] = template_question
 
-        global_progress['current'] += 1
-        report("meta", global_progress['current'], total_work_units, "Saving meta-card...")
+        report("meta", save_progress_base + 4, save_progress_base + 5, "Saving meta-card...")
         meta_json_path = RESULTS_DIR / f"{base_name}__meta.json"
         with meta_json_path.open("w", encoding="utf-8") as f:
             json.dump(meta_card, f, ensure_ascii=False, indent=2)
@@ -956,15 +978,13 @@ def run_gemini_cards_with_progress(
         with meta_jsonl_path.open("w", encoding="utf-8") as f:
             f.write(json.dumps(meta_card, ensure_ascii=False) + "\n")
 
-        global_progress['current'] += 1
-        report("meta", global_progress['current'], total_work_units, "Generating meta-card PDF...")
         meta_pdf_path = RESULTS_DIR / f"{base_name}__meta.pdf"
         build_pdf(meta_jsonl_path, meta_pdf_path)
 
     except Exception as e:
         print(f"[WARN] Could not build meta-card: {e}")
 
-    report("complete", total_work_units, total_work_units, "All done!")
+    report("complete", save_progress_base + 5, save_progress_base + 5, "All done!")
     return jsonl_path.resolve(), csv_path.resolve(), pdf_path.resolve()
 
 

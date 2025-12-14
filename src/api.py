@@ -78,20 +78,41 @@ def load_jobs_from_disk():
             print(f"[JOBS] Failed to load {job_file.name}: {e}")
 
 def cleanup_old_jobs():
-    """Remove completed/failed jobs older than 24 hours, keep running jobs indefinitely."""
+    """Remove completed/failed/cancelled jobs older than 24 hours, keep running jobs indefinitely."""
     cutoff = datetime.now() - timedelta(hours=24)
+    pending_cutoff = datetime.now() - timedelta(minutes=10)  # More aggressive: 10 minutes for pending
+    cancelled_cutoff = datetime.now() - timedelta(minutes=5)  # Very aggressive: 5 minutes for cancelled
+    
     with jobs_lock:
         old_jobs = []
         for jid, job in jobs.items():
-            # Only clean up completed/failed jobs after 24 hours
-            if job.get('status') in ['complete', 'error']:
-                if job.get('created_at', datetime.now()) < cutoff:
+            status = job.get('status')
+            created_at = job.get('created_at', datetime.now())
+            age_hours = (datetime.now() - created_at).total_seconds() / 3600
+            
+            print(f"[CLEANUP] Job {jid}: status={status}, age={age_hours:.1f}h")
+            
+            # Clean up cancelled jobs very quickly (5 minutes)
+            if status == 'cancelled':
+                if created_at < cancelled_cutoff:
+                    print(f"[CLEANUP] Removing cancelled job {jid} (age: {age_hours:.1f}h)")
+                    old_jobs.append(jid)
+            # Clean up completed/failed jobs after 24 hours
+            elif status in ['complete', 'error']:
+                if created_at < cutoff:
+                    print(f"[CLEANUP] Removing {status} job {jid} (age: {age_hours:.1f}h)")
+                    old_jobs.append(jid)
+            # For pending jobs, clean up if older than 10 minutes (likely stale)
+            elif status == 'pending':
+                if created_at < pending_cutoff:
+                    print(f"[CLEANUP] Removing stale pending job {jid} (age: {age_hours:.1f}h)")
                     old_jobs.append(jid)
             # For running jobs, check last activity (2 hours timeout for stalled jobs)
-            elif job.get('status') == 'running':
-                last_activity = job.get('last_activity', job.get('created_at', datetime.now()))
-                if datetime.now() - last_activity > timedelta(hours=2):
-                    print(f"[JOBS] Marking stalled job {jid} as error")
+            elif status == 'running':
+                last_activity = job.get('last_activity', created_at)
+                inactive_hours = (datetime.now() - last_activity).total_seconds() / 3600
+                if inactive_hours > 2:
+                    print(f"[CLEANUP] Marking stalled job {jid} as error (inactive: {inactive_hours:.1f}h)")
                     job['status'] = 'error'
                     job['error'] = 'Job stalled (no activity for 2 hours)'
                     save_job_to_disk(jid)
@@ -102,7 +123,7 @@ def cleanup_old_jobs():
             job_file = JOBS_DIR / f"{jid}.json"
             if job_file.exists():
                 job_file.unlink()
-            print(f"[JOBS] Cleaned up old job {jid}")
+            print(f"[CLEANUP] Cleaned up job {jid} from disk")
 
 def create_job(user_id: Optional[int], template_name: str, papers_folder: str) -> str:
     """Create a new job and return its ID."""
@@ -176,6 +197,30 @@ def fail_job(job_id: str, error: str):
                 'last_activity': datetime.now(),
             })
     save_job_to_disk(job_id)
+
+def cancel_job(job_id: str) -> bool:
+    """Cancel a running job. Returns True if cancelled, False if already complete/error."""
+    with jobs_lock:
+        if job_id not in jobs:
+            return False
+        job = jobs[job_id]
+        # Can only cancel pending or running jobs
+        if job['status'] in ['pending', 'running']:
+            job.update({
+                'status': 'cancelled',
+                'message': 'Cancelled by user',
+                'last_activity': datetime.now(),
+            })
+            save_job_to_disk(job_id)
+            return True
+        return False
+
+def is_job_cancelled(job_id: str) -> bool:
+    """Check if a job has been cancelled."""
+    with jobs_lock:
+        if job_id in jobs:
+            return jobs[job_id]['status'] == 'cancelled'
+        return False
 
 def get_job(job_id: str) -> Optional[dict]:
     """Get job status."""
@@ -362,6 +407,37 @@ async def startup_event():
     # Load persisted jobs from disk (survives server restarts/redeploys)
     load_jobs_from_disk()
     print(f"✅ Loaded {len(jobs)} persisted job(s) from disk")
+    
+    # Remove orphaned/interrupted jobs (can't be running if server just started, and old errors should be cleaned)
+    jobs_to_remove = []
+    with jobs_lock:
+        for jid, job in list(jobs.items()):
+            status = job.get('status')
+            error_msg = job.get('error', '')
+            
+            # Remove any job that's marked as "running" (orphaned)
+            if status == 'running':
+                print(f"[STARTUP] Removing orphaned running job {jid}")
+                del jobs[jid]
+                jobs_to_remove.append(jid)
+            # Remove error jobs caused by server restarts
+            elif status == 'error' and 'interrupted by server restart' in error_msg.lower():
+                print(f"[STARTUP] Removing restart-interrupted error job {jid}")
+                del jobs[jid]
+                jobs_to_remove.append(jid)
+    
+    # Delete files outside the lock
+    for jid in jobs_to_remove:
+        job_file = JOBS_DIR / f"{jid}.json"
+        if job_file.exists():
+            job_file.unlink()
+    
+    if jobs_to_remove:
+        print(f"✅ Removed {len(jobs_to_remove)} orphaned/interrupted job(s)")
+    
+    # Clean up old jobs on startup
+    cleanup_old_jobs()
+    print(f"✅ After cleanup: {len(jobs)} active job(s)")
 
 # Include database routes
 app.include_router(db_router)
@@ -689,6 +765,9 @@ def start_build_job(
             def progress_callback(stage: str, current: int, total: int, message: str):
                 update_job_progress(job_id, stage, current, total, message)
             
+            def cancellation_check() -> bool:
+                return is_job_cancelled(job_id)
+            
             print(f"[JOB {job_id}] Calling run_gemini_cards_with_progress...")
             jsonl_path, csv_path, pdf_path = run_gemini_cards_with_progress(
                 schema_name=template_name,
@@ -697,6 +776,7 @@ def start_build_job(
                 progress_callback=progress_callback,
                 schema_data=schema_data,
                 template_question=template_question,
+                cancellation_check=cancellation_check,
             )
             print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
             print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
@@ -734,10 +814,24 @@ def start_build_job(
             print(f"[JOB {job_id}] Completed successfully")
             
         except Exception as e:
-            fail_job(job_id, str(e))
-            print(f"[JOB {job_id}] Failed: {e}")
-            import traceback
-            traceback.print_exc()
+            error_msg = str(e)
+            # Check if it's a cancellation
+            if "cancelled" in error_msg.lower():
+                print(f"[JOB {job_id}] Cancelled by user")
+                # Ensure job status is set to cancelled (may not have been set yet)
+                with jobs_lock:
+                    if job_id in jobs and jobs[job_id]['status'] != 'cancelled':
+                        jobs[job_id].update({
+                            'status': 'cancelled',
+                            'message': 'Cancelled by user',
+                            'last_activity': datetime.now(),
+                        })
+                        save_job_to_disk(job_id)
+            else:
+                fail_job(job_id, error_msg)
+                print(f"[JOB {job_id}] Failed: {e}")
+                import traceback
+                traceback.print_exc()
     
     # Start in a background thread (not FastAPI BackgroundTasks - those wait for response)
     print(f"[JOB {job_id}] Creating thread...")
@@ -768,6 +862,18 @@ def get_job_status(job_id: str):
         result=job.get('result'),
         error=job.get('error'),
     )
+
+
+@app.delete("/jobs/{job_id}")
+def cancel_job_endpoint(job_id: str):
+    """Cancel a running job."""
+    if cancel_job(job_id):
+        return {"message": "Job cancelled", "job_id": job_id}
+    else:
+        job = get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"message": f"Cannot cancel job in status: {job['status']}", "job_id": job_id}
 
 
 @app.get("/jobs")

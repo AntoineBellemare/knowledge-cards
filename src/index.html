@@ -924,20 +924,29 @@
         </div>
 
         <div class="flex flex-col gap-4">
-            <button id="btn-run-gemini"
-              class="group relative px-6 py-3 rounded-lg bg-gradient-to-r from-accentCyan via-accentPurple to-accentPink text-white text-sm font-semibold shadow-neon hover:shadow-lg hover:scale-[1.02] transition-all duration-200 overflow-hidden">
-              <span class="relative z-10 flex items-center justify-center gap-2">
-                <svg id="btn-icon-default" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            <div class="flex gap-2">
+              <button id="btn-run-gemini"
+                class="group relative flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-accentCyan via-accentPurple to-accentPink text-white text-sm font-semibold shadow-neon hover:shadow-lg hover:scale-[1.02] transition-all duration-200 overflow-hidden">
+                <span class="relative z-10 flex items-center justify-center gap-2">
+                  <svg id="btn-icon-default" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                  </svg>
+                  <svg id="btn-icon-loading" class="w-5 h-5 animate-spin hidden" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span id="btn-text">Build Cards</span>
+                </span>
+                <div class="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+              </button>
+              
+              <button id="btn-cancel-job" class="hidden px-4 py-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors text-sm font-semibold flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
-                <svg id="btn-icon-loading" class="w-5 h-5 animate-spin hidden" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span id="btn-text">Build Cards</span>
-              </span>
-              <div class="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-            </button>
+                <span>Cancel</span>
+              </button>
+            </div>
             
             <!-- Progress bar -->
             <div id="progress-container" class="hidden">
@@ -1884,7 +1893,10 @@
     }
 
     // Job-based API for long-running card generation (no timeout issues)
-    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, model, onProgress) {
+    // Polling controller to allow cancellation from outside
+    let activePollController = null;
+    
+    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, model, onProgress, onJobStarted) {
       // schemaValue can be "db:123" for database templates or "schema_name" for file-based
       let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
       const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
@@ -1906,46 +1918,74 @@
       const { job_id } = await startRes.json();
       console.log("[JOB] Started job:", job_id);
       
-      // Poll for status
-      const pollInterval = 3000; // 3 seconds (more lenient for long runs)
+      // Create controller for this polling loop
+      activePollController = { cancelled: false, jobId: job_id };
       
-      while (true) {
-        // No timeout - jobs can run as long as needed
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-        const statusRes = await fetch(`${API_BASE}/jobs/${job_id}`);
-        if (!statusRes.ok) {
-          throw new Error("Failed to check job status");
+      // Notify caller of job ID for cancel functionality
+      if (onJobStarted) onJobStarted(job_id);
+      
+      // Poll for status
+      const pollInterval = 1000; // 1 second for more responsive cancellation
+      
+      try {
+        while (true) {
+          // Check if polling was cancelled locally (before waiting)
+          if (activePollController.cancelled) {
+            console.log("[JOB] Polling cancelled locally");
+            throw new Error('Job was cancelled');
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          
+          // Check again after wait
+          if (activePollController.cancelled) {
+            console.log("[JOB] Polling cancelled locally");
+            throw new Error('Job was cancelled');
+          }
+          
+          const statusRes = await fetch(`${API_BASE}/jobs/${job_id}`);
+          if (!statusRes.ok) {
+            throw new Error("Failed to check job status");
+          }
+          
+          const status = await statusRes.json();
+          console.log("[JOB] Status:", status);
+          
+          // Update progress
+          if (onProgress && status.stage) {
+            onProgress({
+              stage: status.stage,
+              current: status.progress,
+              total: 100,
+              message: status.message,
+              percent: status.progress
+            });
+          }
+          
+          if (status.status === 'complete') {
+            return {
+              ok: true,
+              schema_name: status.result.schema_name,
+              papers_folder: status.result.papers_folder,
+              jsonl: status.result.jsonl,
+              csv: status.result.csv,
+              pdf: status.result.pdf,
+              collection_id: status.result.collection_id,
+            };
+          }
+          
+          if (status.status === 'error') {
+            throw new Error(status.error || 'Job failed');
+          }
+          
+          if (status.status === 'cancelled') {
+            throw new Error('Job was cancelled');
+          }
         }
-        
-        const status = await statusRes.json();
-        console.log("[JOB] Status:", status);
-        
-        // Update progress
-        if (onProgress && status.stage) {
-          onProgress({
-            stage: status.stage,
-            current: status.progress,
-            total: 100,
-            message: status.message,
-            percent: status.progress
-          });
-        }
-        
-        if (status.status === 'complete') {
-          return {
-            ok: true,
-            schema_name: status.result.schema_name,
-            papers_folder: status.result.papers_folder,
-            jsonl: status.result.jsonl,
-            csv: status.result.csv,
-            pdf: status.result.pdf,
-            collection_id: status.result.collection_id,
-          };
-        }
-        
-        if (status.status === 'error') {
-          throw new Error(status.error || 'Job failed');
+      } finally {
+        // Clean up controller
+        if (activePollController && activePollController.jobId === job_id) {
+          activePollController = null;
         }
       }
     }
@@ -3186,6 +3226,8 @@
       }
     }
 
+    let currentJobId = null;
+    
     async function handleRunGemini() {
         const schemaName = $("run-schema").value;
         const folder = $("run-folder").value;
@@ -3200,6 +3242,7 @@
         const progressLabel = $("progress-label");
         const progressPercent = $("progress-percent");
         const btn = $("btn-run-gemini");
+        const btnCancel = $("btn-cancel-job");
 
         if (!schemaName || !folder) {
             statusEl.textContent = "⚠️ Select both a schema and a papers folder.";
@@ -3213,11 +3256,13 @@
         btnIconDefault.classList.add("hidden");
         btnIconLoading.classList.remove("hidden");
         progressContainer.classList.remove("hidden");
+        btnCancel.classList.remove("hidden");
         progressBar.style.width = "0%";
         progressLabel.textContent = "Initializing...";
         progressPercent.textContent = "0%";
         statusEl.textContent = "";
         outEl.textContent = "";
+        currentJobId = null;
 
         // Progress handler for real-time updates
         function handleProgress(data) {
@@ -3241,7 +3286,10 @@
 
         try {
             // Use job-based API for reliability (no timeout issues)
-            const res = await apiRunGeminiWithJobs(schemaName, folder, model, handleProgress);
+            const res = await apiRunGeminiWithJobs(schemaName, folder, model, handleProgress, (jobId) => {
+                currentJobId = jobId;
+                btnCancel.onclick = () => cancelJob(jobId);
+            });
             
             // Complete progress
             progressBar.style.width = "100%";
@@ -3297,6 +3345,37 @@
             btnText.textContent = "Build Cards";
             btnIconDefault.classList.remove("hidden");
             btnIconLoading.classList.add("hidden");
+            btnCancel.classList.add("hidden");
+            currentJobId = null;
+        }
+    }
+    
+    async function cancelJob(jobId) {
+        if (!confirm("Cancel this job? Progress will be lost.")) return;
+        
+        // Immediately stop polling on the frontend
+        if (activePollController && activePollController.jobId === jobId) {
+            console.log("[CANCEL] Stopping polling loop");
+            activePollController.cancelled = true;
+        }
+        
+        try {
+            const res = await fetch(`${API_BASE}/jobs/${jobId}`, { method: 'DELETE' });
+            if (res.ok) {
+                $("run-status").innerHTML = '<span class="text-yellow-400">⚠ Job cancelled</span>';
+                $("progress-container").classList.add("hidden");
+                $("btn-cancel-job").classList.add("hidden");
+                $("btn-run-gemini").disabled = false;
+                $("btn-run-gemini").classList.remove("opacity-75", "cursor-wait");
+                $("btn-text").textContent = "Build Cards";
+                $("btn-icon-default").classList.remove("hidden");
+                $("btn-icon-loading").classList.add("hidden");
+                console.log("[CANCEL] Successfully cancelled job on backend");
+            } else {
+                console.error("[CANCEL] Backend returned error:", res.status);
+            }
+        } catch (e) {
+            console.error("Failed to cancel job:", e);
         }
     }
 
