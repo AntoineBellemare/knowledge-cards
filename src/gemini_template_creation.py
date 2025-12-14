@@ -563,29 +563,42 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     
     # Process chunks in parallel
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all chunks
-        futures = {executor.submit(process_chunk, idx, ch): idx for idx, ch in enumerate(chunks)}
-        
-        # Collect results as they complete
-        for future in as_completed(futures):
-            try:
-                idx, part, error = future.result()
-                completed_count += 1
+        try:
+            # Submit all chunks
+            futures = {executor.submit(process_chunk, idx, ch): idx for idx, ch in enumerate(chunks)}
+            
+            # Collect results as they complete
+            for future in as_completed(futures):
+                # Check for cancellation before processing result
+                if cancellation_check and cancellation_check():
+                    print(f"[PIPELINE] Job cancelled, shutting down thread pool")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise RuntimeError("Job cancelled by user")
                 
-                # Report progress
-                report_progress(
-                    f"{pdf_path.name} ({total_chunks} chunks): completed {completed_count}/{total_chunks}",
-                    current=completed_count,
-                    total=total_chunks
-                )
-                
-                if part is not None:
-                    partials.append((idx, part))  # Keep track of index for ordering
-            except Exception as e:
-                # Re-raise cancellation errors
-                if "cancelled" in str(e).lower():
-                    raise
-                print(f"[WARN|chunk] Error in parallel processing: {e}")
+                try:
+                    idx, part, error = future.result()
+                    completed_count += 1
+                    
+                    # Report progress
+                    report_progress(
+                        f"{pdf_path.name} ({total_chunks} chunks): completed {completed_count}/{total_chunks}",
+                        current=completed_count,
+                        total=total_chunks
+                    )
+                    
+                    if part is not None:
+                        partials.append((idx, part))  # Keep track of index for ordering
+                except Exception as e:
+                    # Re-raise cancellation errors
+                    if "cancelled" in str(e).lower():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        raise
+                    print(f"[WARN|chunk] Error in parallel processing: {e}")
+        except RuntimeError as e:
+            # Ensure thread pool is shutdown on cancellation
+            if "cancelled" in str(e).lower():
+                executor.shutdown(wait=False, cancel_futures=True)
+            raise
     
     # Sort partials by original index to maintain document order
     partials.sort(key=lambda x: x[0])

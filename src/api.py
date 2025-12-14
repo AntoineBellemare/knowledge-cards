@@ -154,6 +154,11 @@ def update_job_progress(job_id: str, stage: str, current: int, total: int, messa
     with jobs_lock:
         print(f"[update_job_progress] Lock acquired for job {job_id}")
         if job_id in jobs:
+            # CRITICAL: Don't update if job is already cancelled or complete
+            if jobs[job_id]['status'] in ['cancelled', 'complete', 'error']:
+                print(f"[update_job_progress] Job {job_id} is {jobs[job_id]['status']}, ignoring update")
+                return
+            
             percent = int((current / total) * 100) if total > 0 else 0
             jobs[job_id].update({
                 'stage': stage,
@@ -756,6 +761,11 @@ def start_build_job(
     def run_job():
         print(f"[JOB {job_id}] Thread started!")
         try:
+            # Check for cancellation immediately (in case job was cancelled during startup)
+            if is_job_cancelled(job_id):
+                print(f"[JOB {job_id}] Job already cancelled, exiting thread")
+                return
+            
             print(f"[JOB {job_id}] About to call update_job_progress...")
             # Mark job as running immediately
             update_job_progress(job_id, "init", 0, 100, "Starting initialization...")
@@ -763,7 +773,9 @@ def start_build_job(
             print(f"[JOB {job_id}] Starting background task")
             
             def progress_callback(stage: str, current: int, total: int, message: str):
-                update_job_progress(job_id, stage, current, total, message)
+                # Only update if job hasn't been cancelled
+                if not is_job_cancelled(job_id):
+                    update_job_progress(job_id, stage, current, total, message)
             
             def cancellation_check() -> bool:
                 return is_job_cancelled(job_id)
@@ -818,20 +830,24 @@ def start_build_job(
             # Check if it's a cancellation
             if "cancelled" in error_msg.lower():
                 print(f"[JOB {job_id}] Cancelled by user")
-                # Ensure job status is set to cancelled (may not have been set yet)
+                # Ensure job status is set to cancelled
                 with jobs_lock:
-                    if job_id in jobs and jobs[job_id]['status'] != 'cancelled':
-                        jobs[job_id].update({
-                            'status': 'cancelled',
-                            'message': 'Cancelled by user',
-                            'last_activity': datetime.now(),
-                        })
-                        save_job_to_disk(job_id)
+                    if job_id in jobs:
+                        # Only update if not already in a terminal state
+                        if jobs[job_id]['status'] not in ['complete']:
+                            jobs[job_id].update({
+                                'status': 'cancelled',
+                                'message': 'Cancelled by user',
+                                'last_activity': datetime.now(),
+                            })
+                save_job_to_disk(job_id)
             else:
                 fail_job(job_id, error_msg)
                 print(f"[JOB {job_id}] Failed: {e}")
                 import traceback
                 traceback.print_exc()
+        finally:
+            print(f"[JOB {job_id}] Thread exiting")
     
     # Start in a background thread (not FastAPI BackgroundTasks - those wait for response)
     print(f"[JOB {job_id}] Creating thread...")
@@ -880,7 +896,13 @@ def cancel_job_endpoint(job_id: str):
 def list_all_jobs():
     """List all jobs (for debugging)."""
     with jobs_lock:
-        return {"jobs": list(jobs.values())}
+        # Also include active thread count for diagnostics
+        active_threads = [t.name for t in threading.enumerate() if t.name.startswith('job-')]
+        return {
+            "jobs": list(jobs.values()),
+            "active_job_threads": active_threads,
+            "total_threads": threading.active_count()
+        }
 
 
 @app.delete("/jobs/cleanup")
