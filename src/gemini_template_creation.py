@@ -83,11 +83,30 @@ def save_jsonl(rows: List[Dict[str, Any]], path: Path):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 def drop_refs_and_supp(text: str) -> str:
-    cut = re.split(
-        r'\n\s*(references|bibliography|supplementary materials?|appendix)\s*\n',
-        text, flags=re.I
-    )[0]
-    return cut.strip()
+    """Drop references/bibliography, but only if it's in the last 30% of the document."""
+    words = text.split()
+    total_words = len(words)
+    
+    # Only look for refs/bibliography in the last 30% of the document
+    cutoff_start = int(total_words * 0.7)
+    tail_text = " ".join(words[cutoff_start:])
+    
+    # Try to find references section in the tail
+    match = re.search(
+        r'\n\s*(references|bibliography|works cited|supplementary materials?|appendix)\s*\n',
+        tail_text, flags=re.I
+    )
+    
+    if match:
+        # Found it in the tail - cut from there
+        refs_start_in_tail = len(tail_text[:match.start()].split())
+        cut_at = cutoff_start + refs_start_in_tail
+        result = " ".join(words[:cut_at])
+        print(f"[PDF] Dropped references section (kept {cut_at}/{total_words} words)")
+        return result.strip()
+    
+    # No references found or it's in the main body - keep everything
+    return text.strip()
 
 # ------------------ PDF parsing ------------------
 def normalize_text(s: str) -> str:
@@ -142,15 +161,34 @@ def extract_pdf(path: Path) -> Tuple[str, List[Tuple[str, str]]]:
     print(f"[PDF] Opening {path.name} ...")
     doc = fitz.open(path)
     pages = []
+    total_pages = len(doc)
+    print(f"[PDF] {path.name} has {total_pages} pages")
+    
     for i, p in enumerate(doc):
-        txt = normalize_text(p.get_text("text"))
+        # Try multiple extraction methods
+        txt = p.get_text("text")
+        
+        # If text extraction yields nothing, try "blocks" method
+        if len(txt.strip()) < 50:
+            blocks = p.get_text("blocks")
+            # blocks is a list of tuples: (x0, y0, x1, y1, "text", block_no, block_type)
+            txt = " ".join([block[4] for block in blocks if len(block) > 4])
+        
+        # Now normalize the text
+        txt = normalize_text(txt)
         pages.append(txt)
+        
         if i == 0:
             # quick peek at first page length
             print(f"[PDF] Page 1 length for {path.name}: {len(txt.split())} words")
+        if i == min(5, total_pages - 1):
+            # Check a middle page too
+            print(f"[PDF] Page {i+1} length for {path.name}: {len(txt.split())} words")
+    
     full = "\n\n".join(pages)
+    print(f"[PDF] Total extracted BEFORE refs-drop for {path.name}: {len(full.split())} words")
     full = drop_refs_and_supp(full)
-    print(f"[PDF] Total length after refs-drop for {path.name}: {len(full.split())} words")
+    print(f"[PDF] Total length AFTER refs-drop for {path.name}: {len(full.split())} words")
 
     # crude title guess
     title = "Unknown Title"
