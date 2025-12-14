@@ -23,6 +23,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from collections import defaultdict
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import fitz  # PyMuPDF
 import pandas as pd
@@ -525,37 +526,70 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
             data["citation"] = {"title": title}
         return data
 
-    # map-reduce
+    # map-reduce with parallel chunk processing
     chunks = build_chunks(sections)
     total_chunks = len(chunks)
     
-    partials = []
-    for idx, ch in enumerate(chunks):
-        # Check for cancellation before each chunk
+    # Determine parallelism: use 3-5 concurrent workers for Gemini API
+    # (Gemini has rate limits, so we don't want too many parallel calls)
+    max_workers = min(5, max(1, total_chunks // 2))  # 3-5 workers typical
+    
+    print(f"[PIPELINE] Processing {total_chunks} chunks with {max_workers} parallel workers")
+    
+    def process_chunk(idx, ch):
+        """Process a single chunk - designed to run in parallel."""
+        # Check for cancellation before processing
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        # Report progress with chunk info visible to user
-        report_progress(
-            f"{pdf_path.name} ({total_chunks} chunks): chunk {idx+1}/{total_chunks}",
-            current=idx + 1,
-            total=total_chunks
-        )
         user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
             
-            # Check for cancellation immediately after API call completes
+            # Check for cancellation after API call
             if cancellation_check and cancellation_check():
                 raise RuntimeError("Job cancelled by user")
             
-            partials.append(part)
+            return idx, part, None
         except Exception as e:
             # Re-raise cancellation errors immediately
             if "cancelled" in str(e).lower():
                 raise
             print(f"[WARN|chunk] {pdf_path.name} chunk {idx+1}: {e}")
-            continue
+            return idx, None, str(e)
+    
+    partials = []
+    completed_count = 0
+    
+    # Process chunks in parallel
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all chunks
+        futures = {executor.submit(process_chunk, idx, ch): idx for idx, ch in enumerate(chunks)}
+        
+        # Collect results as they complete
+        for future in as_completed(futures):
+            try:
+                idx, part, error = future.result()
+                completed_count += 1
+                
+                # Report progress
+                report_progress(
+                    f"{pdf_path.name} ({total_chunks} chunks): completed {completed_count}/{total_chunks}",
+                    current=completed_count,
+                    total=total_chunks
+                )
+                
+                if part is not None:
+                    partials.append((idx, part))  # Keep track of index for ordering
+            except Exception as e:
+                # Re-raise cancellation errors
+                if "cancelled" in str(e).lower():
+                    raise
+                print(f"[WARN|chunk] Error in parallel processing: {e}")
+    
+    # Sort partials by original index to maintain document order
+    partials.sort(key=lambda x: x[0])
+    partials = [part for idx, part in partials]  # Extract just the parts
 
     if not partials:
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
