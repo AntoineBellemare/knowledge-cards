@@ -1907,15 +1907,10 @@
       console.log("[JOB] Started job:", job_id);
       
       // Poll for status
-      const pollInterval = 2000; // 2 seconds
-      const maxPollTime = 60 * 60 * 1000; // 1 hour max
-      const startTime = Date.now();
+      const pollInterval = 3000; // 3 seconds (more lenient for long runs)
       
       while (true) {
-        if (Date.now() - startTime > maxPollTime) {
-          throw new Error("Job timed out after 1 hour. Check your collections for results.");
-        }
-        
+        // No timeout - jobs can run as long as needed
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         
         const statusRes = await fetch(`${API_BASE}/jobs/${job_id}`);

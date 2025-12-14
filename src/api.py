@@ -32,22 +32,82 @@ CARDS_DIR = Path("../cards")
 CARDS_DIR.mkdir(exist_ok=True)
 
 # ---------- Background Job System ----------
-# In-memory job store (use Redis in production for multi-process)
+# Job store with disk persistence for long-running tasks
+JOBS_DIR = ROOT_DIR / ".jobs"  # Hidden directory for job persistence
+JOBS_DIR.mkdir(exist_ok=True)
 jobs: Dict[str, Dict[str, Any]] = {}
 jobs_lock = threading.Lock()
 
-def cleanup_old_jobs():
-    """Remove jobs older than 1 hour."""
-    cutoff = datetime.now() - timedelta(hours=1)
+def _serialize_datetime(obj):
+    """JSON serializer for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+def save_job_to_disk(job_id: str):
+    """Persist job state to disk. Safe to call without lock (makes a copy)."""
+    # Make a copy of the job data outside the lock to avoid blocking
+    job_copy = None
     with jobs_lock:
-        old_jobs = [jid for jid, job in jobs.items() 
-                    if job.get('created_at', datetime.now()) < cutoff]
+        if job_id in jobs:
+            job_copy = jobs[job_id].copy()
+    
+    if job_copy:
+        job_file = JOBS_DIR / f"{job_id}.json"
+        try:
+            with job_file.open('w') as f:
+                json.dump(job_copy, f, default=_serialize_datetime, indent=2)
+        except Exception as e:
+            print(f"[JOBS] Failed to save {job_id}: {e}")
+
+def load_jobs_from_disk():
+    """Load persisted jobs on startup."""
+    global jobs
+    for job_file in JOBS_DIR.glob("*.json"):
+        try:
+            with job_file.open('r') as f:
+                job_data = json.load(f)
+                # Convert ISO datetime strings back to datetime objects
+                if 'created_at' in job_data and isinstance(job_data['created_at'], str):
+                    job_data['created_at'] = datetime.fromisoformat(job_data['created_at'])
+                if 'last_activity' in job_data and isinstance(job_data['last_activity'], str):
+                    job_data['last_activity'] = datetime.fromisoformat(job_data['last_activity'])
+                jobs[job_data['id']] = job_data
+                print(f"[JOBS] Loaded job {job_data['id']} from disk")
+        except Exception as e:
+            print(f"[JOBS] Failed to load {job_file.name}: {e}")
+
+def cleanup_old_jobs():
+    """Remove completed/failed jobs older than 24 hours, keep running jobs indefinitely."""
+    cutoff = datetime.now() - timedelta(hours=24)
+    with jobs_lock:
+        old_jobs = []
+        for jid, job in jobs.items():
+            # Only clean up completed/failed jobs after 24 hours
+            if job.get('status') in ['complete', 'error']:
+                if job.get('created_at', datetime.now()) < cutoff:
+                    old_jobs.append(jid)
+            # For running jobs, check last activity (2 hours timeout for stalled jobs)
+            elif job.get('status') == 'running':
+                last_activity = job.get('last_activity', job.get('created_at', datetime.now()))
+                if datetime.now() - last_activity > timedelta(hours=2):
+                    print(f"[JOBS] Marking stalled job {jid} as error")
+                    job['status'] = 'error'
+                    job['error'] = 'Job stalled (no activity for 2 hours)'
+                    save_job_to_disk(jid)
+        
         for jid in old_jobs:
+            # Delete from memory and disk
             del jobs[jid]
+            job_file = JOBS_DIR / f"{jid}.json"
+            if job_file.exists():
+                job_file.unlink()
+            print(f"[JOBS] Cleaned up old job {jid}")
 
 def create_job(user_id: Optional[int], template_name: str, papers_folder: str) -> str:
     """Create a new job and return its ID."""
     job_id = str(uuid.uuid4())[:8]  # Short ID for easier debugging
+    now = datetime.now()
     with jobs_lock:
         jobs[job_id] = {
             'id': job_id,
@@ -60,20 +120,36 @@ def create_job(user_id: Optional[int], template_name: str, papers_folder: str) -
             'papers_folder': papers_folder,
             'result': None,
             'error': None,
-            'created_at': datetime.now(),
+            'created_at': now,
+            'last_activity': now,
         }
+    save_job_to_disk(job_id)
     return job_id
 
 def update_job_progress(job_id: str, stage: str, current: int, total: int, message: str):
-    """Update job progress."""
+    """Update job progress. Auto-persists to disk for long-running jobs."""
+    print(f"[update_job_progress] Acquiring lock for job {job_id}...")
+    should_save = False
     with jobs_lock:
+        print(f"[update_job_progress] Lock acquired for job {job_id}")
         if job_id in jobs:
             percent = int((current / total) * 100) if total > 0 else 0
             jobs[job_id].update({
                 'stage': stage,
                 'progress': percent,
                 'message': message,
+                'status': 'running',
+                'last_activity': datetime.now(),
             })
+            print(f"[update_job_progress] Updated job {job_id} to {percent}%")
+            # Persist to disk less frequently to avoid blocking (every 10% or key milestones)
+            should_save = (percent % 10 == 0 or stage in ['init', 'complete', 'error'])
+            print(f"[update_job_progress] Should save to disk: {should_save}")
+    # Save outside the lock to avoid blocking
+    if should_save:
+        print(f"[update_job_progress] Saving job {job_id} to disk...")
+        save_job_to_disk(job_id)
+        print(f"[update_job_progress] Saved job {job_id} to disk")
 
 def complete_job(job_id: str, result: dict):
     """Mark job as complete with results."""
@@ -85,7 +161,9 @@ def complete_job(job_id: str, result: dict):
                 'stage': 'complete',
                 'message': 'Complete!',
                 'result': result,
+                'last_activity': datetime.now(),
             })
+    save_job_to_disk(job_id)
 
 def fail_job(job_id: str, error: str):
     """Mark job as failed."""
@@ -95,7 +173,9 @@ def fail_job(job_id: str, error: str):
                 'status': 'error',
                 'error': error,
                 'message': f'Error: {error}',
+                'last_activity': datetime.now(),
             })
+    save_job_to_disk(job_id)
 
 def get_job(job_id: str) -> Optional[dict]:
     """Get job status."""
@@ -272,12 +352,16 @@ from db_routes import router as db_router
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database tables on startup."""
+    """Initialize database tables and load persisted jobs on startup."""
     if engine is not None:
         init_db()
         print("✅ Database connected and initialized")
     else:
         print("⚠️  Running without database (DATABASE_URL not set)")
+    
+    # Load persisted jobs from disk (survives server restarts/redeploys)
+    load_jobs_from_disk()
+    print(f"✅ Loaded {len(jobs)} persisted job(s) from disk")
 
 # Include database routes
 app.include_router(db_router)
@@ -590,13 +674,22 @@ def start_build_job(
     
     # Create job
     job_id = create_job(user_id, template_name, papers_subdir)
+    print(f"[JOB {job_id}] Created job for {template_name} / {papers_subdir}")
     
     # Define the background task
     def run_job():
+        print(f"[JOB {job_id}] Thread started!")
         try:
+            print(f"[JOB {job_id}] About to call update_job_progress...")
+            # Mark job as running immediately
+            update_job_progress(job_id, "init", 0, 100, "Starting initialization...")
+            print(f"[JOB {job_id}] update_job_progress completed")
+            print(f"[JOB {job_id}] Starting background task")
+            
             def progress_callback(stage: str, current: int, total: int, message: str):
                 update_job_progress(job_id, stage, current, total, message)
             
+            print(f"[JOB {job_id}] Calling run_gemini_cards_with_progress...")
             jsonl_path, csv_path, pdf_path = run_gemini_cards_with_progress(
                 schema_name=template_name,
                 papers_folder=papers_subdir,
@@ -605,6 +698,8 @@ def start_build_job(
                 schema_data=schema_data,
                 template_question=template_question,
             )
+            print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
+            print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
             
             def to_rel(p: Path) -> str:
                 p = Path(p).resolve()
@@ -641,10 +736,14 @@ def start_build_job(
         except Exception as e:
             fail_job(job_id, str(e))
             print(f"[JOB {job_id}] Failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Start in a background thread (not FastAPI BackgroundTasks - those wait for response)
-    thread = threading.Thread(target=run_job, daemon=True)
+    print(f"[JOB {job_id}] Creating thread...")
+    thread = threading.Thread(target=run_job, daemon=True, name=f"job-{job_id}")
     thread.start()
+    print(f"[JOB {job_id}] Thread started: {thread.is_alive()}")
     
     return StartJobResponse(
         job_id=job_id,
@@ -669,6 +768,21 @@ def get_job_status(job_id: str):
         result=job.get('result'),
         error=job.get('error'),
     )
+
+
+@app.get("/jobs")
+def list_all_jobs():
+    """List all jobs (for debugging)."""
+    with jobs_lock:
+        return {"jobs": list(jobs.values())}
+
+
+@app.delete("/jobs/cleanup")
+def manual_cleanup_jobs():
+    """Manually trigger job cleanup."""
+    cleanup_old_jobs()
+    with jobs_lock:
+        return {"remaining_jobs": len(jobs), "jobs": list(jobs.keys())}
 
 
 @app.post("/run_gemini", response_model=RunGeminiResponse)
