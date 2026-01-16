@@ -463,17 +463,38 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     # Recursive case: split into batches, reduce each, then reduce the results
     total_batches = (len(partial_cards) + batch_size - 1) // batch_size
-    print(f"[REDUCE] Splitting {len(partial_cards)} cards into {total_batches} batches")
-    intermediate_cards = []
+    print(f"[REDUCE] Splitting {len(partial_cards)} cards into {total_batches} batches (parallel processing)")
     
+    # Create batch tasks
+    batch_tasks = []
     for i in range(0, len(partial_cards), batch_size):
         batch = partial_cards[i:i + batch_size]
         batch_num = (i // batch_size) + 1
+        batch_tasks.append((batch_num, batch))
+    
+    # Process batches in parallel
+    def process_batch(batch_info):
+        batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
-        
         user = prompt_reduce(schema, title, filename, batch)
-        intermediate = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
-        intermediate_cards.append(intermediate)
+        return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+    
+    intermediate_cards = []
+    with ThreadPoolExecutor(max_workers=min(4, total_batches)) as executor:
+        futures = {executor.submit(process_batch, task): idx for idx, task in enumerate(batch_tasks)}
+        
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                result = future.result()
+                intermediate_cards.append((idx, result))  # Keep track of order
+            except Exception as e:
+                print(f"[WARN|REDUCE] Batch {idx + 1} failed: {e}")
+                raise
+    
+    # Sort by original order
+    intermediate_cards.sort(key=lambda x: x[0])
+    intermediate_cards = [card for _, card in intermediate_cards]
     
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
