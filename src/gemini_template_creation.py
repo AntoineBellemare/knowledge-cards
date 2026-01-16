@@ -507,13 +507,16 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
     return words <= MAX_INPUT_TOKENS
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
-                       global_progress: dict = None, cancellation_check=None) -> Dict[str, Any]:
+                       global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
+                       model_reduction: Optional[str] = None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
     progress_callback(stage: str, current: int, total: int, message: str)
     global_progress: dict with 'current', 'total', 'pdf_name' for global tracking
     cancellation_check: Optional callable that returns True if job should be cancelled
+    batch_size: Number of cards to reduce per batch (default 4)
+    model_reduction: Model to use for reduction passes (if different from chunk model)
     """
     def report_progress(message, current=None, total=None):
         # If current and total are provided (for chunk tracking), use them
@@ -640,14 +643,24 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
 
     report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks into final card...")
     
+    # Switch to reduction model if specified
+    global GEMINI_MODEL
+    original_model = GEMINI_MODEL
+    if model_reduction:
+        GEMINI_MODEL = model_reduction
+        print(f"[PIPELINE] Switching to reduction model: {model_reduction}")
+    
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
-        data = reduce_in_batches(schema, title, pdf_path.name, partials, 
+        data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
                                   progress_callback=progress_callback, global_progress=None)
     else:
         # Single-pass reduction for shorter documents
         user = prompt_reduce(schema, title, pdf_path.name, partials)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+    
+    # Restore original model
+    GEMINI_MODEL = original_model
     
     data["_file"] = pdf_path.name
     if "citation" in data and isinstance(data["citation"], dict):
@@ -892,6 +905,8 @@ def run_gemini_cards_with_progress(
     schema_name: str,
     papers_folder: str,
     model: Optional[str] = None,
+    model_reduction: Optional[str] = None,
+    batch_size: int = 4,
     progress_callback=None,
     schema_data: Optional[Dict[str, Any]] = None,
     template_question: Optional[str] = None,
@@ -900,10 +915,16 @@ def run_gemini_cards_with_progress(
     """
     Same as run_gemini_cards but with progress callbacks for real-time updates.
     
-    progress_callback(stage: str, current: int, total: int, message: str)
-    schema_data: If provided, use this schema directly instead of loading from file.
-    template_question: The original question that generated the template schema.
-    cancellation_check: Optional callable that returns True if job should be cancelled.
+    Args:
+        schema_name: Name of the schema template
+        papers_folder: Folder containing PDFs
+        model: Model for chunk processing (map phase)
+        model_reduction: Model for reduction passes (defaults to same as model)
+        batch_size: Number of cards to reduce per batch (default 4)
+        progress_callback: Callback for progress updates
+        schema_data: Optional pre-loaded schema (from database)
+        template_question: Original question that generated the template
+        cancellation_check: Optional callable that returns True if job should be cancelled
     """
     # Set cancellation check in thread-local storage so it's accessible everywhere
     set_cancellation_check(cancellation_check)
@@ -920,9 +941,13 @@ def run_gemini_cards_with_progress(
 
     # --- set model if provided ---
     global GEMINI_MODEL
-    if model:
-        GEMINI_MODEL = model
-        print(f"[CONFIG] Using model: {model}")
+    model_chunks = model or "gemini-2.5-flash-lite"
+    model_reduce = model_reduction or model or "gemini-2.5-flash-lite"
+    
+    GEMINI_MODEL = model_chunks
+    print(f"[CONFIG] Chunk processing model: {model_chunks}")
+    print(f"[CONFIG] Reduction model: {model_reduce}")
+    print(f"[CONFIG] Batch size: {batch_size}")
 
     report("init", 0, 100, "Initializing Gemini...")
     init_gemini()
@@ -984,7 +1009,9 @@ def run_gemini_cards_with_progress(
                 pdf, schema, 
                 progress_callback=pdf_progress_callback, 
                 global_progress=None,
-                cancellation_check=cancellation_check
+                cancellation_check=cancellation_check,
+                batch_size=batch_size,
+                model_reduction=model_reduce
             )
             cards.append(card)
         except Exception as e:

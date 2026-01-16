@@ -386,9 +386,20 @@ def build_speculation_prompt(
         citation = schema.get("citation", {})
         title = metadata.get("title") or citation.get("title") or "Unknown"
         authors = metadata.get("authors") or citation.get("authors") or []
-        if isinstance(authors, list):
-            authors = ", ".join(authors[:2]) + ("..." if len(authors) > 2 else "")
-        paper_refs.append(f"- {title} ({authors})")
+        if isinstance(authors, list) and authors:
+            # Handle both string and dict authors
+            author_strs = []
+            for auth in authors[:2]:
+                if isinstance(auth, str):
+                    author_strs.append(auth)
+                elif isinstance(auth, dict):
+                    author_strs.append(auth.get("name", "Unknown"))
+                else:
+                    author_strs.append("Unknown")
+            authors = ", ".join(author_strs) + ("..." if len(authors) > 2 else "")
+        else:
+            authors = ""
+        paper_refs.append(f"- {title} ({authors})" if authors else f"- {title}")
     
     papers_list = "\n".join(paper_refs)
     

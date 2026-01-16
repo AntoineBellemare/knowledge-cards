@@ -719,12 +719,23 @@ def start_build_job(
     schema_name: Optional[str] = None,
     template_id: Optional[int] = None,
     model: Optional[str] = None,
+    model_reduction: Optional[str] = None,
+    batch_size: Optional[int] = 4,
     user_id: Optional[int] = None,
     background_tasks: BackgroundTasks = None
 ):
     """
     Start a background job for card generation.
     Returns immediately with a job_id that can be polled for status.
+    
+    Args:
+        papers_subdir: Folder containing PDFs
+        schema_name: Name of the schema file
+        template_id: Database template ID (alternative to schema_name)
+        model: Model for chunk processing
+        model_reduction: Model for reduction passes (defaults to same as model)
+        batch_size: Number of cards to reduce per batch (default 4)
+        user_id: User ID for database storage
     """
     # Cleanup old jobs periodically
     cleanup_old_jobs()
@@ -785,6 +796,8 @@ def start_build_job(
                 schema_name=template_name,
                 papers_folder=papers_subdir,
                 model=model,
+                model_reduction=model_reduction,
+                batch_size=batch_size,
                 progress_callback=progress_callback,
                 schema_data=schema_data,
                 template_question=template_question,

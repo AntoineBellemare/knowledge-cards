@@ -913,14 +913,40 @@
 
             <div>
             <label class="block text-xs font-mono text-slate-400 mb-1">
-                AI MODEL
+                CHUNK PROCESSING MODEL
             </label>
-            <select id="run-model"
+            <select id="run-model-chunks"
                 class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
                 <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fastest, cheapest)</option>
                 <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
                 <option value="gemini-2.5-pro">gemini-2.5-pro (best quality)</option>
                 <option value="gemini-3-flash-preview">gemini-3-flash-preview (experimental)</option>
+            </select>
+            </div>
+
+            <div>
+            <label class="block text-xs font-mono text-slate-400 mb-1">
+                REDUCTION & SYNTHESIS MODEL
+            </label>
+            <select id="run-model-reduction"
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fastest, cheapest)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (best quality)</option>
+                <option value="gemini-3-flash-preview">gemini-3-flash-preview (experimental)</option>
+            </select>
+            </div>
+
+            <div>
+            <label class="block text-xs font-mono text-slate-400 mb-1">
+                REDUCTION BATCH SIZE
+            </label>
+            <select id="run-batch-size"
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
+                <option value="2">2 (slower, smaller prompts)</option>
+                <option value="4" selected>4 (balanced)</option>
+                <option value="6">6 (faster, fewer passes)</option>
+                <option value="8">8 (fastest, largest prompts)</option>
             </select>
             </div>
         </div>
@@ -1898,9 +1924,11 @@
     // Polling controller to allow cancellation from outside
     let activePollController = null;
     
-    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, model, onProgress, onJobStarted) {
+    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, modelChunks, onProgress, onJobStarted, modelReduction, batchSize) {
       // schemaValue can be "db:123" for database templates or "schema_name" for file-based
-      let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
+      const modelReductionParam = modelReduction || modelChunks || 'gemini-2.5-flash-lite';
+      const batchSizeParam = batchSize || 4;
+      let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(modelChunks || 'gemini-2.5-flash-lite')}&model_reduction=${encodeURIComponent(modelReductionParam)}&batch_size=${batchSizeParam}`;
       const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
       
       if (schemaValue.startsWith('db:')) {
@@ -3233,7 +3261,9 @@
     async function handleRunGemini() {
         const schemaName = $("run-schema").value;
         const folder = $("run-folder").value;
-        const model = $("run-model").value || "gemini-2.5-flash-lite";
+        const modelChunks = $("run-model-chunks").value || "gemini-2.5-flash-lite";
+        const modelReduction = $("run-model-reduction").value || "gemini-2.5-flash-lite";
+        const batchSize = parseInt($("run-batch-size").value) || 4;
         const statusEl = $("run-status");
         const outEl = $("run-output");
         const btnText = $("btn-text");
@@ -3288,10 +3318,10 @@
 
         try {
             // Use job-based API for reliability (no timeout issues)
-            const res = await apiRunGeminiWithJobs(schemaName, folder, model, handleProgress, (jobId) => {
+            const res = await apiRunGeminiWithJobs(schemaName, folder, modelChunks, handleProgress, (jobId) => {
                 currentJobId = jobId;
                 btnCancel.onclick = () => cancelJob(jobId);
-            });
+            }, modelReduction, batchSize);
             
             // Complete progress
             progressBar.style.width = "100%";
