@@ -147,13 +147,36 @@ def call_gemini_json(
         generation_config={"response_mime_type": "application/json"},
     )
     last_err: Optional[Exception] = None
+    last_response_text: Optional[str] = None
     for attempt in range(3):
         try:
             resp = m.generate_content(user_prompt)
+            last_response_text = resp.text
             return json.loads(resp.text)
         except (ResourceExhausted, DeadlineExceeded, GoogleAPIError, Exception) as e:
             last_err = e
             print(f"[WARN] Gemini attempt {attempt + 1} failed: {e}")
+    
+    # Save failed response for debugging
+    if last_response_text:
+        from pathlib import Path
+        import os
+        # Use /app/results in production or ../results locally
+        results_dir = Path(os.getenv("RESULTS_DIR", "/app/results"))
+        if not results_dir.exists():
+            results_dir = Path(__file__).parent.parent / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        
+        error_file = results_dir / "metacard_error_response.json"
+        print(f"[ERROR] All attempts failed. Saving raw response to {error_file}")
+        print(f"[ERROR] Response preview (first 500 chars): {last_response_text[:500]}")
+        try:
+            error_file.write_text(last_response_text, encoding="utf-8")
+            print(f"[ERROR] Full response saved to {error_file}")
+            print(f"[ERROR] You can download this file from the results directory")
+        except Exception as save_err:
+            print(f"[ERROR] Could not save error response: {save_err}")
+    
     raise last_err  # type: ignore[arg-type]
 
 
