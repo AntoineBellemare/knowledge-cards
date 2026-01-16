@@ -280,7 +280,15 @@ def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
         authors = metadata.get("authors") or citation.get("authors") or []
         year = metadata.get("year") or citation.get("year") or ""
         if isinstance(authors, list) and authors:
-            first_author = authors[0].split(",")[0].split()[-1] if authors[0] else "Unknown"
+            # Handle case where authors[0] might be a dict or a string
+            first_author_raw = authors[0]
+            if isinstance(first_author_raw, str):
+                first_author = first_author_raw.split(",")[0].split()[-1]
+            elif isinstance(first_author_raw, dict):
+                # If it's a dict, try to extract name field
+                first_author = first_author_raw.get("name", "Unknown")
+            else:
+                first_author = "Unknown"
             paper_refs.append(f"- {title} ({first_author}, {year})" if year else f"- {title} ({first_author})")
         else:
             paper_refs.append(f"- {title}")
