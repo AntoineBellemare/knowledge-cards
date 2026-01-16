@@ -518,6 +518,8 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
     """
+    global GEMINI_MODEL
+    
     def report_progress(message, current=None, total=None):
         # If current and total are provided (for chunk tracking), use them
         # Otherwise use global progress tracking
@@ -644,7 +646,6 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks into final card...")
     
     # Switch to reduction model if specified
-    global GEMINI_MODEL
     original_model = GEMINI_MODEL
     if model_reduction:
         GEMINI_MODEL = model_reduction
