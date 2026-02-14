@@ -72,6 +72,15 @@ META_SYSTEM_PROMPT = (
     "  * Each field should contain a cross-paper synthesis rather than a copy from a single schema.\n"
     "  * Where appropriate, merge, cluster, and summarise overlapping ideas.\n"
     "  * Highlight majority patterns vs. minority/unique positions when possible.\n\n"
+    "QUESTION ANSWER SUMMARY (REQUIRED - place at the VERY BEGINNING of the JSON):\n"
+    "- 'template_question': The exact research question provided (copy it verbatim).\n"
+    "- 'question_answer_summary': 1-3 paragraphs synthesizing how the papers COLLECTIVELY answer the question.\n"
+    "  * Include INLINE CITATIONS in parentheses at the end of each claim, e.g., (Luppi et al., 2020)\n"
+    "  * Mention KEY FINDINGS, methods, metrics, and values that directly address the question\n"
+    "  * Note areas of CONSENSUS vs. DISAGREEMENT between papers\n"
+    "  * Identify what aspects of the question remain UNANSWERED\n"
+    "  * Example: 'Synergistic information is linked to higher cognition (Luppi et al., 2020), while redundancy dominates sensorimotor areas (Mediano et al., 2021).'\n"
+    "- 'papers_included': List of papers with author, year, and title\n\n"
     "DETAILED REQUIREMENTS\n"
     "- Output MUST be a SINGLE JSON object (no lists at the top level, no extra text).\n"
     "- Preserve all major top-level sections (e.g. metadata, orientation_and_scope, "
@@ -265,9 +274,13 @@ def load_schemas_from_file(path: Path) -> List[Dict[str, Any]]:
     return schemas
 
 
-def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
+def build_meta_prompt(schemas: List[Dict[str, Any]], question: Optional[str] = None) -> str:
     """
     Build the user prompt that passes all schemas to Gemini.
+    
+    Args:
+        schemas: List of individual paper schemas
+        question: The original template question (optional but recommended)
     """
     schemas_str = json.dumps(schemas, ensure_ascii=False, indent=2)
     
@@ -295,9 +308,23 @@ def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
     
     papers_list = "\n".join(paper_refs) if paper_refs else "Multiple papers"
 
+    # Build question section if provided
+    question_section = ""
+    if question:
+        question_section = f"""
+TEMPLATE QUESTION (CRITICAL - include this and answer it in the meta-card):
+\"\"\"{question}\"\"\"
+
+You MUST include this question verbatim in 'template_question' field at the top of your JSON output.
+You MUST include a 'question_answer_summary' field with 1-3 paragraphs synthesizing how these papers 
+collectively answer this question, with inline citations (Author, Year) after each claim.
+
+"""
+
     prompt = (
         "You are given multiple completed reading card SCHEMAS in JSON format. "
         "Each schema corresponds to one paper and shares the same overall structure.\n\n"
+        f"{question_section}"
         f"PAPERS IN THIS CORPUS:\n{papers_list}\n\n"
         "SCHEMAS JSON:\n"
         "```json\n"
@@ -305,7 +332,8 @@ def build_meta_prompt(schemas: List[Dict[str, Any]]) -> str:
         "```\n\n"
         "IMPORTANT: For ALL 'citations_or_quotes' fields, every quote MUST include a paper reference "
         "in parentheses, e.g., \"Quote text\" (Author, Year). Use the paper list above for references.\n\n"
-        "Please synthesise these into a SINGLE 'meta-card' JSON as described in the system prompt."
+        "Please synthesise these into a SINGLE 'meta-card' JSON as described in the system prompt. "
+        "Start the JSON with 'template_question', 'question_answer_summary', and 'papers_included' fields."
     )
     return prompt
 
@@ -499,7 +527,7 @@ def generate_meta_card(
         Complete meta-card with optional speculative_synthesis section
     """
     init_gemini()
-    prompt = build_meta_prompt(schemas)
+    prompt = build_meta_prompt(schemas, question=question)
     meta_card = call_gemini_json(model, META_SYSTEM_PROMPT, prompt)
 
     if not isinstance(meta_card, dict):
