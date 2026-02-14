@@ -3518,6 +3518,7 @@
     }
 
     let currentJobId = null;
+    let currentRunId = 0;  // Unique ID for each job run to prevent old cleanup trampling new jobs
     
     async function handleRunGemini() {
         const schemaName = $("run-schema").value;
@@ -3542,6 +3543,10 @@
             return;
         }
 
+        // Increment run ID and capture for this run - ensures old job cleanup doesn't affect new jobs
+        currentRunId++;
+        const thisRunId = currentRunId;
+
         // UI: show loading state
         btn.disabled = true;
         btn.classList.add("opacity-75", "cursor-wait");
@@ -3557,8 +3562,10 @@
         outEl.textContent = "";
         currentJobId = null;
 
-        // Progress handler for real-time updates
+        // Progress handler for real-time updates - only update if still this run
         function handleProgress(data) {
+            if (currentRunId !== thisRunId) return;  // Stale run, ignore
+            
             const { stage, current, total, message } = data;
             
             // Simple global progress: current/total across all work units
@@ -3580,9 +3587,16 @@
         try {
             // Use job-based API for reliability (no timeout issues)
             const res = await apiRunGeminiWithJobs(schemaName, folder, modelChunks, handleProgress, (jobId) => {
+                if (currentRunId !== thisRunId) return;  // Stale run
                 currentJobId = jobId;
                 btnCancel.onclick = () => cancelJob(jobId);
             }, modelReduction, batchSize);
+            
+            // Only update UI if this is still the active run
+            if (currentRunId !== thisRunId) {
+                console.log("[JOB] Stale run completed, ignoring UI update");
+                return;
+            }
             
             // Complete progress
             progressBar.style.width = "100%";
@@ -3590,7 +3604,9 @@
             progressPercent.textContent = "100%";
 
             setTimeout(() => {
-              progressContainer.classList.add("hidden");
+              if (currentRunId === thisRunId) {
+                progressContainer.classList.add("hidden");
+              }
             }, 1500);
 
             statusEl.innerHTML = '<span class="text-green-400">✓ Cards built successfully!</span>';
@@ -3623,6 +3639,12 @@
             // Auto-refresh collections list
             refreshCollectionsList();
         } catch (err) {
+            // Only update UI if this is still the active run
+            if (currentRunId !== thisRunId) {
+                console.log("[JOB] Stale run errored, ignoring UI update");
+                return;
+            }
+            
             progressContainer.classList.add("hidden");
             console.error(err);
             
@@ -3632,19 +3654,24 @@
             statusEl.innerHTML = '<span class="text-red-400">✗ ' + errorMsg + '</span>';
             outEl.textContent = "";
         } finally {
-            // Reset button state
-            btn.disabled = false;
-            btn.classList.remove("opacity-75", "cursor-wait");
-            btnText.textContent = "Build Cards";
-            btnIconDefault.classList.remove("hidden");
-            btnIconLoading.classList.add("hidden");
-            btnCancel.classList.add("hidden");
-            currentJobId = null;
+            // Only reset button state if this is still the active run
+            if (currentRunId === thisRunId) {
+                btn.disabled = false;
+                btn.classList.remove("opacity-75", "cursor-wait");
+                btnText.textContent = "Build Cards";
+                btnIconDefault.classList.remove("hidden");
+                btnIconLoading.classList.add("hidden");
+                btnCancel.classList.add("hidden");
+                currentJobId = null;
+            }
         }
     }
     
     async function cancelJob(jobId) {
         if (!confirm("Cancel this job? Progress will be lost.")) return;
+        
+        // Increment runId to invalidate any pending callbacks from the cancelled job
+        currentRunId++;
         
         // Immediately stop polling on the frontend
         if (activePollController && activePollController.jobId === jobId) {
@@ -3663,6 +3690,7 @@
                 $("btn-text").textContent = "Build Cards";
                 $("btn-icon-default").classList.remove("hidden");
                 $("btn-icon-loading").classList.add("hidden");
+                currentJobId = null;
                 console.log("[CANCEL] Successfully cancelled job on backend");
             } else {
                 console.error("[CANCEL] Backend returned error:", res.status);
