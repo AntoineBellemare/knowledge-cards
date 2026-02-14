@@ -313,16 +313,19 @@ SYSTEM_CARD = (
     "You are a precise textual extractor. Extract EXACTLY what the text states.\n"
     "Return strictly valid JSON matching the schema provided. Do not add fields.\n\n"
     "QUALITY PRINCIPLES:\n"
-    "- PRESERVE qualifiers, conditions, and hedges (e.g., 'perhaps', 'in certain contexts', 'arguably')\n"
-    "- DISTINGUISH between: claims the author makes vs. positions they cite/critique vs. speculation\n"
-    "- For CONCEPTUAL texts: capture definitions, distinctions, and argumentative moves\n"
-    "- For EMPIRICAL texts: capture methods, findings, effect directions, and sample details\n"
-    "- For ESSAYS/THEORY: capture thesis, key arguments, conceptual innovations, and conclusions\n"
-    "- NOTE internal tensions or qualifications the author acknowledges\n"
-    "- Add location hints like [Intro], [Conceptual Framework], [Analysis], [Conclusion] when obvious\n\n"
+    "- PRESERVE qualifiers and hedges ('perhaps', 'in some cases')\n"
+    "- DISTINGUISH author claims vs. views they cite/critique\n"
+    "- Capture key definitions, arguments, methods, findings\n"
+    "- Note acknowledged limitations or tensions\n\n"
+    "CONCISENESS PRINCIPLES:\n"
+    "- For list fields (limitations, findings, etc.): MAX 6-8 items total\n"
+    "- SYNTHESIZE similar points into single items (e.g., 3 exclusion criteria → 1 item)\n"
+    "- Prefer fewer, more informative items over many fragmentary ones\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
-    "- Select passages that are: definitional, argumentatively crucial, or distinctively phrased\n"
-    "- 1-3 sentences each, ≤300 characters\n"
+    "- 1-2 sentences each, ≤200 characters\n"
+    "- MAX 8-10 quotes per card total (select most important)\n"
+    "- Include ONLY the quote text + brief location hint: 'quote text' [Section]\n"
+    "- NEVER include chunk IDs, line numbers, DOI metadata, or copyright notices in quotes\n"
     "- NEVER copy bibliography/reference entries\n"
 )
 
@@ -374,34 +377,28 @@ CHUNK:
 
 EXTRACTION RULES:
 
-1. SCOPE: Extract only from THIS chunk, but recognize when text refers to content elsewhere
-   - If text says "as noted above" or "see Section X", add [ref: earlier] but extract what IS here
+1. SCOPE: Extract ONLY content from THIS chunk.
 
-2. CONTENT VALUE - All sections matter equally:
-   - INTRODUCTIONS may contain thesis statements, key framings, conceptual distinctions
-   - THEORETICAL sections may contain definitions, arguments, thought experiments
-   - EMPIRICAL sections may contain methods, findings, effect sizes
-   - DISCUSSIONS/CONCLUSIONS may contain synthesis, implications, limitations
-   - Extract the INTELLECTUAL CONTENT regardless of section type
+2. SELECTIVITY:
+   - Extract KEY claims, definitions, methods, findings
+   - SYNTHESIZE related items (e.g., multiple exclusion criteria → single summary item)
+   - Preserve important qualifiers but condense verbose lists
 
-3. PRECISION:
-   - Preserve qualifiers ("perhaps", "in some cases", "arguably")
-   - Distinguish claims the author makes vs. views they cite/critique
-   - Capture definitions and conceptual distinctions verbatim when possible
+3. QUOTES: Max 2-3 from this chunk:
+   - Only definitional or argumentatively crucial passages
+   - Format: "quote text" [{section}]
+   - MAX 200 characters each - trim if needed
+   - CLEAN quotes: exclude line numbers, chunk IDs, DOI, copyright text, page markers
+   - NEVER include metadata like "CC-BY 4.0" or "doi:" in quotes
 
-4. QUOTES: Max 4 from this chunk, prioritizing:
-   - Definitional passages ("By X, I mean...")
-   - Core arguments or claims
-   - Distinctive phrasing that captures a key idea
-   - Format: "quote text" [chunk: {section}]
-   - NEVER copy bibliography entries
+4. FOR LISTS (limitations, methods, etc.): Keep concise - will be merged later.
 
 Output: Valid JSON only.
 """
 
 def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
     return f"""
-Merge these PARTIAL extractions into a single FINAL card that captures the text's full intellectual content.
+Merge these PARTIAL extractions into a single FINAL card.
 
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
@@ -411,39 +408,34 @@ TEXT: "{title}" ({filename})
 PARTIALS:
 {json.dumps(partial_cards, ensure_ascii=False, indent=2)}
 
-MERGE RULES - QUALITY FOCUSED:
+MERGE RULES:
 
-1. CONSERVATIVE DEDUPLICATION:
-   - Only merge items that are TRULY identical in meaning AND scope
-   - Items that SEEM similar but differ in context, qualifier, or emphasis are DISTINCT - keep both
-   - Example: "X enables Y" and "X sometimes enables Y in context Z" are TWO items, not one
-   - When uncertain, KEEP BOTH rather than lose information
+1. SMART DEDUPLICATION:
+   - Merge items with SAME core meaning (even if phrased differently)
+   - Items with genuinely different claims or qualifiers → keep distinct
+   - Group related minor points into single synthesized items
 
-2. PRESERVE INTELLECTUAL STRUCTURE:
-   - For conceptual/theoretical texts: keep the argumentative progression
-   - For empirical texts: keep methodological details and finding specifics
-   - For essays: preserve thesis development and key distinctions
-   - Content from introductions and conceptual sections is as valuable as conclusions
+2. ENFORCE LIMITS:
+   - Any list field (limitations, findings, methods, etc.): MAX 6-8 items
+   - If partials have 15+ items → synthesize into 6-8 most important
+   - Example: 10 exclusion criteria → "Excluded: n=3 for motion, imaging issues, or prior conditions"
 
-3. HANDLE DIFFERENT CONTENT TYPES:
-   - Definitions and distinctions: preserve exact wording
-   - Arguments: keep logical structure (premise → claim)
-   - Findings/claims: preserve conditions and qualifiers
-   - Examples and illustrations: keep if they clarify key concepts
+3. QUOTES - STRICT SELECTION:
+   - MAX 8-10 quotes total for entire card (not per section)
+   - Select MOST important: definitional, core arguments, key findings
+   - CLEAN all quotes: strip chunk IDs, line numbers, DOI text, copyright notices
+   - Format: "quote" [Section] - nothing else
+   - Drop low-value quotes (generic statements, repetitive points)
 
-4. QUOTES - QUALITY & DIVERSITY:
-   - Keep quotes that are: definitional, argumentatively crucial, or distinctively phrased
-   - Aim for diversity across the text (not all from one section)
-   - Only drop quotes that are genuinely redundant (same sentence, same point)
-   - Preserve location hints from partials
+4. PRESERVE WHAT MATTERS:
+   - Key definitions (exact wording)
+   - Core arguments and claims
+   - Main findings with qualifiers
+   - Acknowledged limitations (synthesized, not exhaustive list)
 
-5. TENSIONS & NUANCE:
-   - If partials reveal internal tensions, qualifications, or acknowledged limitations, PRESERVE them
-   - Do not smooth over complexity
-
-6. COMPLETENESS OVER BREVITY:
-   - This is the final card - err on the side of inclusion
-   - If a field has rich content across partials, preserve that richness
+5. QUALITY OVER QUANTITY:
+   - A concise, well-organized card > an exhaustive verbose one
+   - Prefer synthesized items over fragmentary lists
 
 Output: Valid JSON only.
 """
