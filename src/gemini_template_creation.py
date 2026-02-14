@@ -368,13 +368,13 @@ TEXT:
 
 RULES (VERY IMPORTANT):
 - Populate every field in the schema. If unknown, use "" or [].
-- SEMANTIC MATCHING:
-  * Each field name indicates a TOPIC AREA - content should be genuinely about that topic
-  * Include conceptually related content (e.g., 'emergence' can include self-organization, collective behavior)
-  * EXCLUDE content that's about a completely different topic, even if from the same paper
-  * WHEN IN DOUBT about relatedness, consider the intellectual context
+- SEMANTIC MATCHING (CRITICAL):
+  * Each field describes a SPECIFIC PHENOMENON - only content about THAT phenomenon belongs there
+  * SAME phenomenon, different terms → INCLUDE (e.g., 'enaction' in 'embodiment' field)
+  * DIFFERENT phenomenon, same research area → EXCLUDE (they study different things)
+  * Being from the same discipline does NOT make different phenomena equivalent
 - Do NOT invent content.
-- Do NOT fill fields with unrelated content just because you extracted something.
+- If content is about a different phenomenon than the field name, leave the field EMPTY.
 - findings: short bullet points with concrete outcomes.
 - methods: include type (e.g., behavioral/EEG/fMRI/corpus/comp.), data, N if visible, and measures.
 - ALWAYS include SPECIFIC VALUES: numbers, parameters, effect sizes - not generic descriptions
@@ -430,13 +430,12 @@ CHUNK:
 
 EXTRACTION RULES:
 
-1. SEMANTIC MATCHING (IMPORTANT):
-   - Each field name indicates a TOPIC AREA - content should be genuinely related
-   - ALLOW: Conceptually connected ideas (terms from the same intellectual tradition)
-   - PREVENT: Completely unrelated content that doesn't connect to the field's topic
-   - Ask: Is this content genuinely ABOUT or RELATED TO the topic this field represents?
-   - If NO connection at all → leave the field EMPTY for this chunk
-   - When uncertain, consider whether experts would see a conceptual link
+1. SEMANTIC MATCHING (CRITICAL):
+   - Each field describes a SPECIFIC PHENOMENON - only that phenomenon belongs there
+   - SAME phenomenon, different terminology → INCLUDE
+   - DIFFERENT phenomenon, same research area → EXCLUDE
+   - Ask: Is this about THE SAME PHENOMENON the field name describes?
+   - If NO (it's a different phenomenon) → leave the field EMPTY
 
 2. PRECISION IS CRITICAL:
    - Extract KEY claims, definitions, methods, findings
@@ -475,13 +474,12 @@ PARTIALS:
 
 MERGE RULES:
 
-1. SEMANTIC VALIDATION (IMPORTANT - FIRST STEP):
-   - Review each field's content: Is it genuinely ABOUT or RELATED TO that topic?
-   - KEEP: Content with clear conceptual connection to the field's topic
-   - REMOVE: Content that's about a completely different subject
-   - Ask: Would an expert consider this content relevant to the field's topic?
-   - If NO meaningful connection → remove that content from the field
-   - Balance: Allow related concepts, prevent obvious topic drift
+1. SEMANTIC VALIDATION (CRITICAL - MOST IMPORTANT RULE):
+   - Each field describes a SPECIFIC PHENOMENON - validate content matches that phenomenon
+   - KEEP: Content about the same phenomenon (even if using different terminology)
+   - REMOVE: Content about a different phenomenon (even if from the same research area)
+   - Ask: Is this about THE SAME PHENOMENON the field name describes, or something else?
+   - If it's a DIFFERENT phenomenon → REMOVE it from that field
 
 2. SMART DEDUPLICATION:
    - Merge items with SAME core meaning (even if phrased differently)
