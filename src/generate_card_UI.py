@@ -42,7 +42,7 @@ SYSTEM_SCHEMA = (
     "Choose and adapt only those dimensions that are clearly relevant to the user's question, "
     "and feel free to create new ones when appropriate.\n"
     "From the user's question, infer what they likely want to compare or track across texts. "
-    "Design the schema so that it can capture multiple orthogonal aspects, which MAY include:\n"
+    "Design the schema so that it can capture multiple orthogonal aspects, which MAY include, but are not limited to:\n"
     "1) ORIENTATION & SCOPE (what kind of system or phenomenon, what domain, what type of work).\n"
     "   Examples of fields: orientation_and_scope, system_focus, main_domain, work_type, "
     "   timeframe_or_context, scope_of_inference, research_question, thesis_claim.\n"
@@ -226,6 +226,165 @@ def generate_schema(
         schema.setdefault("citations_or_quotes", [])
 
     return schema
+
+
+# ============================================================================
+# TEMPLATE REFINEMENT - Modify existing schemas with natural language
+# ============================================================================
+
+SYSTEM_REFINE = (
+    "You are a schema editor for research reading cards.\n"
+    "You will receive an EXISTING JSON schema/template and a MODIFICATION INSTRUCTION.\n"
+    "Your task is to apply the requested changes while preserving the overall structure and quality.\n\n"
+    "PRINCIPLES:\n"
+    "- Output ONLY the modified JSON schema (no prose, no explanations)\n"
+    "- Preserve fields not mentioned in the instruction\n"
+    "- Keep all values as empty placeholders: \"\", [], false, or {}\n"
+    "- Maintain snake_case for all keys\n"
+    "- Keep nesting to 2-3 levels maximum\n"
+    "- ALWAYS preserve 'citations_or_quotes': [] at the top level AND within relevant subsections\n"
+    "- ALWAYS preserve 'citation' or 'metadata' section if present\n\n"
+    "MODIFICATION TYPES YOU MAY BE ASKED TO DO:\n"
+    "- ADD: new sections, fields, or subfields\n"
+    "- REMOVE: sections or fields (but never remove citations_or_quotes)\n"
+    "- RENAME: change field names while preserving structure\n"
+    "- RESTRUCTURE: move fields between sections, merge sections, split sections\n"
+    "- EXPAND: add more granular subfields to an existing section\n"
+    "- SIMPLIFY: collapse nested structures, remove excessive detail\n"
+    "- REFRAME: adjust the conceptual framing (e.g., more phenomenological, more empirical)\n\n"
+    "Return strictly valid JSON. No comments or explanations."
+)
+
+
+def refine_template(
+    current_schema: dict,
+    instruction: str,
+    target_section: str = None,
+    model: str = "gemini-2.5-flash-lite"
+) -> dict:
+    """
+    Refine an existing template/schema based on natural language instruction.
+    
+    Args:
+        current_schema: The existing schema dict to modify
+        instruction: Natural language description of what to change
+            Examples:
+            - "Add a section for temporal dynamics with fields for rhythm, duration, and sequence"
+            - "Remove the ethics section, this is for basic science papers"
+            - "Expand the methods section to include neuroimaging-specific fields"
+            - "Make the embodiment facets more phenomenological, less cognitive"
+            - "Simplify - fewer nested levels, more flat structure"
+        target_section: Optional - focus changes on a specific section path (e.g., "methods_and_metrics")
+                       If None, allows changes to the entire schema
+        model: Gemini model to use
+    
+    Returns:
+        Modified schema dict
+    """
+    init_gemini()
+    
+    # Build the prompt
+    if target_section:
+        # Extract the target section for focused editing
+        section_content = _get_nested_value(current_schema, target_section)
+        if section_content is None:
+            raise ValueError(f"Section '{target_section}' not found in schema")
+        
+        prompt = f"""
+CURRENT SECTION ({target_section}):
+{json.dumps(section_content, ensure_ascii=False, indent=2)}
+
+FULL SCHEMA CONTEXT (for reference, but only modify the section above):
+{json.dumps(current_schema, ensure_ascii=False, indent=2)}
+
+INSTRUCTION:
+\"\"\"{instruction}\"\"\"
+
+Return the MODIFIED VERSION of the '{target_section}' section only (as a JSON object).
+The modified section will replace the current one in the full schema.
+"""
+        result = call_gemini(model, SYSTEM_REFINE, prompt)
+        # Insert the modified section back into the schema
+        modified_schema = json.loads(json.dumps(current_schema))  # deep copy
+        _set_nested_value(modified_schema, target_section, result)
+        
+    else:
+        # Full schema modification
+        prompt = f"""
+CURRENT SCHEMA:
+{json.dumps(current_schema, ensure_ascii=False, indent=2)}
+
+INSTRUCTION:
+\"\"\"{instruction}\"\"\"
+
+Return the COMPLETE MODIFIED SCHEMA as a JSON object.
+"""
+        modified_schema = call_gemini(model, SYSTEM_REFINE, prompt)
+    
+    # Ensure required field is preserved
+    modified_schema.setdefault("citations_or_quotes", [])
+    
+    return modified_schema
+
+
+def _get_nested_value(d: dict, path: str):
+    """Get a value from a nested dict using dot notation (e.g., 'methods.measures')"""
+    keys = path.split('.')
+    current = d
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return None
+    return current
+
+
+def _set_nested_value(d: dict, path: str, value):
+    """Set a value in a nested dict using dot notation"""
+    keys = path.split('.')
+    current = d
+    for key in keys[:-1]:
+        if key not in current:
+            current[key] = {}
+        current = current[key]
+    current[keys[-1]] = value
+
+
+def preview_schema_diff(original: dict, modified: dict) -> str:
+    """
+    Generate a simple text diff showing what changed between schemas.
+    Useful for user confirmation before saving.
+    """
+    def flatten_keys(d, prefix=''):
+        keys = set()
+        if not isinstance(d, dict):
+            return keys
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            keys.add(full_key)
+            if isinstance(v, dict):
+                keys.update(flatten_keys(v, full_key))
+        return keys
+    
+    orig_keys = flatten_keys(original)
+    mod_keys = flatten_keys(modified)
+    
+    added = mod_keys - orig_keys
+    removed = orig_keys - mod_keys
+    
+    lines = []
+    if added:
+        lines.append("+ ADDED:")
+        for k in sorted(added):
+            lines.append(f"  + {k}")
+    if removed:
+        lines.append("- REMOVED:")
+        for k in sorted(removed):
+            lines.append(f"  - {k}")
+    if not added and not removed:
+        lines.append("(No structural changes - fields may have been renamed or values modified)")
+    
+    return "\n".join(lines)
 
 
 def main():

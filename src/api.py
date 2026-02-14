@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from generate_card_UI import generate_schema
+from generate_card_UI import generate_schema, refine_template, preview_schema_diff
 from gemini_template_creation import run_gemini_cards_with_progress
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -360,7 +360,19 @@ class SchemaRequest(BaseModel):
 
 class SchemaResponse(BaseModel):
     schema: Dict[str, Any]
-    
+
+
+class RefineSchemaRequest(BaseModel):
+    schema: Dict[str, Any]           # Current schema to modify
+    instruction: str                  # Natural language modification instruction
+    target_section: Optional[str] = None  # Optional: focus on specific section (dot notation)
+    model: Optional[str] = None
+
+
+class RefineSchemaResponse(BaseModel):
+    schema: Dict[str, Any]            # Modified schema
+    diff_summary: str                 # Text summary of what changed
+
     
 class SaveSchemaRequest(BaseModel):
     name: str            # e.g. "plant_cognition" or "plant_cognition.json"
@@ -524,6 +536,37 @@ def schema_from_question(req: SchemaRequest) -> SchemaResponse:
         raise HTTPException(status_code=500, detail=f"Error generating schema: {e}")
 
     return SchemaResponse(schema=schema)
+
+
+@app.post("/refine_schema", response_model=RefineSchemaResponse)
+def refine_schema_endpoint(req: RefineSchemaRequest) -> RefineSchemaResponse:
+    """Modify an existing schema using natural language instructions."""
+    if not req.schema:
+        raise HTTPException(status_code=400, detail="Schema must not be empty.")
+    if not req.instruction.strip():
+        raise HTTPException(status_code=400, detail="Instruction must not be empty.")
+    
+    model = req.model or "gemini-2.5-flash-lite"
+    print(f"[API] Refining schema with model: {model}")
+    print(f"[API] Instruction: {req.instruction[:100]}...")
+    if req.target_section:
+        print(f"[API] Target section: {req.target_section}")
+    
+    try:
+        modified_schema = refine_template(
+            current_schema=req.schema,
+            instruction=req.instruction,
+            target_section=req.target_section,
+            model=model
+        )
+        diff_summary = preview_schema_diff(req.schema, modified_schema)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error refining schema: {e}")
+    
+    return RefineSchemaResponse(schema=modified_schema, diff_summary=diff_summary)
+
 
 @app.post("/save_schema", response_model=SaveSchemaResponse)
 def save_schema(req: SaveSchemaRequest) -> SaveSchemaResponse:
