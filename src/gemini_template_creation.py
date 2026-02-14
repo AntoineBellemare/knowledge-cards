@@ -309,6 +309,30 @@ def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> D
     raise last_err
 
 
+def describe_schema_with_paths(schema: Dict[str, Any], parent_path: str = "") -> str:
+    """Generate a description of schema fields with their full parent paths for context."""
+    lines = []
+    for key, value in schema.items():
+        current_path = f"{parent_path}.{key}" if parent_path else key
+        if isinstance(value, dict):
+            # Check if it's a leaf dict (has description or simple values) or nested structure
+            has_nested_dicts = any(isinstance(v, dict) for v in value.values())
+            if has_nested_dicts:
+                lines.append(f"- {current_path}: (category)")
+                lines.append(describe_schema_with_paths(value, current_path))
+            else:
+                desc = value.get('description', '')
+                if desc:
+                    lines.append(f"- {current_path}: {desc[:100]}")
+                else:
+                    lines.append(f"- {current_path}: (object)")
+        elif isinstance(value, list):
+            lines.append(f"- {current_path}: (list)")
+        else:
+            lines.append(f"- {current_path}")
+    return "\n".join(lines)
+
+
 SYSTEM_CARD = (
     "You are a meticulous research assistant. You extract **only** what is present in the text. "
     "Return strictly valid JSON matching the schema provided. Do not add fields.\n"
@@ -321,12 +345,26 @@ SYSTEM_CARD = (
 )
 
 
-def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str) -> str:
+def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str, question: str = "") -> str:
+    question_context = ""
+    if question:
+        question_context = f"""
+GENERAL QUESTION (the inquiry this card template was designed to explore):
+\"{question}\"
+
+IMPORTANT: Start your JSON with a "paper_summary_on_question" field (2-4 sentences) summarizing what THIS paper specifically contributes to answering or illuminating the general question above.
+"""
+    
+    schema_paths = describe_schema_with_paths(schema)
+    
     return f"""
 Fill the following JSON schema exactly (valid JSON only, no comments):
-
+{question_context}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
+
+SCHEMA STRUCTURE (for context - each field belongs to a parent category):
+{schema_paths}
 
 PAPER:
 - approx_title: "{title}"
@@ -352,12 +390,26 @@ RULES (VERY IMPORTANT):
 - JSON only.
 """
 
-def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str) -> str:
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, question: str = "") -> str:
+    question_context = ""
+    if question:
+        question_context = f"""
+GENERAL QUESTION (the inquiry this card template was designed to explore):
+\"{question}\"
+
+Keep this question in mind when extracting content - prioritize information relevant to this inquiry.
+"""
+    
+    schema_paths = describe_schema_with_paths(schema)
+    
     return f"""
 You will fill the same JSON schema **partially** from this chunk **only**. If a field isn't covered here, leave it "" or [].
-
+{question_context}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
+
+SCHEMA STRUCTURE (each field belongs to a parent category - fill fields with awareness of their parent context):
+{schema_paths}
 
 PAPER:
 - approx_title: "{title}"
@@ -381,10 +433,19 @@ RULES (VERY IMPORTANT):
 - JSON only.
 """
 
-def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
+def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], question: str = "") -> str:
+    question_context = ""
+    if question:
+        question_context = f"""
+GENERAL QUESTION (the inquiry this card template was designed to explore):
+\"{question}\"
+
+IMPORTANT: Add a "paper_summary_on_question" field at the TOP of your JSON (2-4 sentences) that synthesizes what THIS paper specifically contributes to answering or illuminating the general question above.
+"""
+    
     return f"""
 Merge these PARTIAL JSON cards into a single, concise FINAL card that still conforms to the SCHEMA exactly.
-
+{question_context}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -412,7 +473,8 @@ MERGE RULES (VERY IMPORTANT):
 """
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
-                      batch_size: int = 4, progress_callback=None, global_progress: dict = None) -> Dict[str, Any]:
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None,
+                      question: str = "") -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -446,7 +508,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     # If total is small enough (< 30KB) and few cards, reduce directly in one pass
     if len(partial_cards) <= batch_size and total_chars < 30000:
         report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
-        user = prompt_reduce(schema, title, filename, partial_cards)
+        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're too large, we still need to reduce them
@@ -454,7 +516,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     if len(partial_cards) == 2 and total_chars >= 30000:
         # Can't batch further, just try to reduce the 2 cards
         report_progress(f"{filename}: merging 2 large cards")
-        user = prompt_reduce(schema, title, filename, partial_cards)
+        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're large, reduce batch size
@@ -476,7 +538,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     def process_batch(batch_info):
         batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
-        user = prompt_reduce(schema, title, filename, batch)
+        user = prompt_reduce(schema, title, filename, batch, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     intermediate_cards = []
@@ -498,7 +560,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
-    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress, question=question)
 
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
@@ -508,7 +570,7 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
                        global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
-                       model_reduction: Optional[str] = None) -> Dict[str, Any]:
+                       model_reduction: Optional[str] = None, question: str = "") -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
@@ -517,6 +579,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     cancellation_check: Optional callable that returns True if job should be cancelled
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
+    question: The general question the card template was designed to explore
     """
     global GEMINI_MODEL
     
@@ -543,7 +606,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if text_size_ok(sections):
         report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
-        user = prompt_single_pass(schema, title, pdf_path.name, full_text)
+        user = prompt_single_pass(schema, title, pdf_path.name, full_text, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -568,7 +631,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
+        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question)
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
             
@@ -633,7 +696,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if not partials:
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
         clipped = " ".join("\n\n".join(t for _, t in sections).split()[:30000])
-        user = prompt_single_pass(schema, title, pdf_path.name, clipped)
+        user = prompt_single_pass(schema, title, pdf_path.name, clipped, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -654,10 +717,11 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
-                                  progress_callback=progress_callback, global_progress=None)
+                                  progress_callback=progress_callback, global_progress=None,
+                                  question=question)
     else:
         # Single-pass reduction for shorter documents
-        user = prompt_reduce(schema, title, pdf_path.name, partials)
+        user = prompt_reduce(schema, title, pdf_path.name, partials, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # Restore original model
@@ -828,7 +892,7 @@ def run_gemini_cards(
 
     for pdf in pdfs:
         try:
-            card = build_card_for_pdf(pdf, schema)
+            card = build_card_for_pdf(pdf, schema, question=template_question or "")
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
@@ -957,7 +1021,13 @@ def run_gemini_cards_with_progress(
     schema_stem = schema_name.replace('.json', '')  # Default stem from name
     if schema_data:
         # Use provided schema data directly (from database)
-        schema = schema_data
+        # Extract nested schema and question if present
+        if "schema" in schema_data:
+            schema = schema_data["schema"]
+            if not template_question:
+                template_question = schema_data.get("question", "")
+        else:
+            schema = schema_data
         print(f"[CONFIG] Using schema from database: {schema_name}")
     else:
         # Load from file
@@ -965,8 +1035,17 @@ def run_gemini_cards_with_progress(
         schema_path = CARDS_DIR / schema_file
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema not found: {schema_path}")
-        schema = load_schema(schema_path)
+        full_schema_data = load_schema(schema_path)
+        # Extract nested schema and question if present
+        if "schema" in full_schema_data:
+            schema = full_schema_data["schema"]
+            if not template_question:
+                template_question = full_schema_data.get("question", "")
+        else:
+            schema = full_schema_data
         schema_stem = schema_path.stem
+    
+    print(f"[CONFIG] Template question: {template_question[:100]}..." if template_question else "[CONFIG] No template question found")
 
     pdfs = sorted(papers_dir.glob("*.pdf"))
     if not pdfs:
@@ -1012,7 +1091,8 @@ def run_gemini_cards_with_progress(
                 global_progress=None,
                 cancellation_check=cancellation_check,
                 batch_size=batch_size,
-                model_reduction=model_reduce
+                model_reduction=model_reduce,
+                question=template_question or ""
             )
             cards.append(card)
         except Exception as e:
