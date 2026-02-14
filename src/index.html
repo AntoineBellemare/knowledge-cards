@@ -1359,6 +1359,73 @@
         </div>
 
         <div class="flex-1 overflow-auto px-6 py-4">
+          <!-- AI Refinement Panel -->
+          <div id="ai-refine-panel" class="mb-6">
+            <div class="glass-soft border borderSoft rounded-xl overflow-hidden">
+              <button id="ai-refine-toggle" type="button"
+                class="w-full px-4 py-3 flex items-center justify-between bg-gradient-to-r from-accentPurple/10 to-accentCyan/10 hover:from-accentPurple/20 hover:to-accentCyan/20 transition-all">
+                <div class="flex items-center gap-3">
+                  <span class="text-lg">🪄</span>
+                  <span class="text-sm font-medium text-slate-200">AI Template Refinement</span>
+                  <span class="text-[0.6rem] px-2 py-0.5 rounded-full bg-accentPurple/20 text-accentPurple font-mono">LLM</span>
+                </div>
+                <svg id="ai-refine-chevron" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <div id="ai-refine-content" class="hidden px-4 py-4 border-t borderSoft">
+                <p class="text-xs text-slate-400 mb-4">
+                  Describe changes in natural language. The AI will modify your template structure accordingly.
+                </p>
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-xs text-slate-300 mb-1.5 font-medium">Modification instruction</label>
+                    <textarea id="ai-refine-instruction" rows="3"
+                      class="w-full px-3 py-2 text-sm bg-slate-900/70 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30"
+                      placeholder="e.g., Add a section for temporal dynamics with fields for rhythm, duration, and sequence..."></textarea>
+                  </div>
+                  <div class="flex flex-wrap gap-2 mb-3">
+                    <button type="button" class="ai-refine-suggestion px-2.5 py-1 text-[0.65rem] rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:border-accentCyan hover:text-accentCyan transition-colors"
+                      data-instruction="Add more subfields for empirical methods including sample size, statistical tests, and effect sizes">
+                      + Empirical methods
+                    </button>
+                    <button type="button" class="ai-refine-suggestion px-2.5 py-1 text-[0.65rem] rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:border-accentCyan hover:text-accentCyan transition-colors"
+                      data-instruction="Simplify the structure - reduce nesting levels and merge similar sections">
+                      Simplify structure
+                    </button>
+                    <button type="button" class="ai-refine-suggestion px-2.5 py-1 text-[0.65rem] rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:border-accentCyan hover:text-accentCyan transition-colors"
+                      data-instruction="Add phenomenological dimensions such as lived experience, embodied awareness, and temporal flow">
+                      + Phenomenology
+                    </button>
+                    <button type="button" class="ai-refine-suggestion px-2.5 py-1 text-[0.65rem] rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:border-accentCyan hover:text-accentCyan transition-colors"
+                      data-instruction="Expand the metadata section to include more bibliographic fields">
+                      + Metadata fields
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <div class="flex-1">
+                      <label class="block text-xs text-slate-400 mb-1">Target section (optional)</label>
+                      <select id="ai-refine-section"
+                        class="w-full px-3 py-1.5 text-xs bg-slate-900/70 border border-slate-700 rounded-lg text-slate-300 focus:outline-none focus:border-accentCyan">
+                        <option value="">Entire template</option>
+                      </select>
+                    </div>
+                    <div class="pt-5">
+                      <button id="ai-refine-submit" type="button"
+                        class="px-4 py-2 rounded-lg bg-gradient-to-r from-accentPurple to-accentCyan text-slate-50 text-xs font-medium hover:brightness-110 shadow-neon flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <span>Refine with AI</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="ai-refine-status" class="text-xs font-mono text-slate-400 hidden"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div id="editor-sections"
             class="grid grid-cols-1 lg:grid-cols-2 gap-4 pr-2 pb-8">
             <!-- injected -->
@@ -1374,6 +1441,59 @@
           </div>
         </div>
       </section>
+
+      <!-- AI Refinement Diff Modal -->
+      <div id="ai-refine-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl">
+          <div class="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <span class="text-lg">🪄</span>
+                Preview AI Modifications
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">Review changes before applying them to your template</p>
+            </div>
+            <button id="ai-refine-modal-close" class="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="p-5 overflow-y-auto max-h-[60vh]">
+            <div class="mb-4">
+              <h4 class="text-xs font-mono text-slate-300 mb-2 flex items-center gap-2">
+                <svg class="w-4 h-4 text-accentCyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                STRUCTURAL CHANGES
+              </h4>
+              <pre id="ai-refine-diff" class="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300 overflow-auto max-h-[150px] whitespace-pre-wrap"></pre>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <h4 class="text-xs font-mono text-slate-400 mb-2">BEFORE</h4>
+                <pre id="ai-refine-before" class="p-3 rounded-lg bg-slate-950/50 border border-slate-800 text-[0.65rem] font-mono text-slate-400 overflow-auto max-h-[250px]"></pre>
+              </div>
+              <div>
+                <h4 class="text-xs font-mono text-accentCyan mb-2">AFTER</h4>
+                <pre id="ai-refine-after" class="p-3 rounded-lg bg-slate-950/50 border border-accentCyan/30 text-[0.65rem] font-mono text-slate-300 overflow-auto max-h-[250px]"></pre>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-4 border-t border-slate-700 flex items-center justify-between">
+            <p class="text-xs text-slate-500 font-mono">This will replace your current template</p>
+            <div class="flex gap-3">
+              <button id="ai-refine-cancel" class="px-4 py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors">Cancel</button>
+              <button id="ai-refine-apply" class="px-4 py-2 rounded-lg bg-gradient-to-r from-accentPurple to-accentCyan text-slate-50 text-xs font-medium hover:brightness-110 shadow-neon flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Apply Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Category Edit Modal -->
       <div id="category-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -1868,6 +1988,25 @@
         throw new Error(`Save schema error ${res.status}: ${text}`);
       }
       return res.json(); // {ok, filename}
+    }
+
+    async function apiRefineSchema(schema, instruction, targetSection = null, model = null) {
+      console.log("[api] refine schema with instruction:", instruction.slice(0, 80) + "...");
+      const res = await fetch(`${API_BASE}/refine_schema`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schema,
+          instruction,
+          target_section: targetSection || null,
+          model: model || "gemini-2.5-flash-lite"
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Refine schema error ${res.status}: ${text}`);
+      }
+      return res.json(); // {schema, diff_summary}
     }
 
     async function apiListSchemas() {
@@ -3168,6 +3307,128 @@
       openCategoryModal(name, schemaJSON[name]);
     }
 
+    // ----- AI Template Refinement -----
+    let pendingRefinedSchema = null;
+    let aiRefinePanelOpen = false;
+
+    function toggleAiRefinePanel() {
+      aiRefinePanelOpen = !aiRefinePanelOpen;
+      const content = $("ai-refine-content");
+      const chevron = $("ai-refine-chevron");
+      
+      if (aiRefinePanelOpen) {
+        content.classList.remove("hidden");
+        chevron.style.transform = "rotate(180deg)";
+        updateAiRefineSectionSelect();
+      } else {
+        content.classList.add("hidden");
+        chevron.style.transform = "rotate(0deg)";
+      }
+    }
+
+    function updateAiRefineSectionSelect() {
+      const select = $("ai-refine-section");
+      // Clear existing options except "Entire template"
+      while (select.options.length > 1) {
+        select.remove(1);
+      }
+      
+      if (!schemaJSON) return;
+      
+      // Add sections from current schema
+      Object.keys(schemaJSON).forEach(key => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        select.appendChild(opt);
+      });
+    }
+
+    async function handleAiRefineSubmit() {
+      const instruction = $("ai-refine-instruction").value.trim();
+      if (!instruction) {
+        alert("Please enter a modification instruction.");
+        return;
+      }
+      
+      if (!schemaJSON || Object.keys(schemaJSON).length === 0) {
+        alert("No template loaded to refine.");
+        return;
+      }
+      
+      const targetSection = $("ai-refine-section").value || null;
+      const status = $("ai-refine-status");
+      const submitBtn = $("ai-refine-submit");
+      
+      status.classList.remove("hidden");
+      status.innerHTML = '<span class="animate-pulse">🪄 Refining template with AI...</span>';
+      submitBtn.disabled = true;
+      
+      try {
+        const result = await apiRefineSchema(schemaJSON, instruction, targetSection);
+        
+        pendingRefinedSchema = result.schema;
+        
+        // Show diff modal
+        $("ai-refine-diff").textContent = result.diff_summary || "(No structural changes detected)";
+        $("ai-refine-before").textContent = JSON.stringify(schemaJSON, null, 2);
+        $("ai-refine-after").textContent = JSON.stringify(result.schema, null, 2);
+        
+        // Color-code the diff
+        const diffEl = $("ai-refine-diff");
+        diffEl.innerHTML = result.diff_summary
+          .split('\n')
+          .map(line => {
+            if (line.startsWith('+ ') || line.startsWith('  +')) {
+              return `<span class="text-emerald-400">${line}</span>`;
+            } else if (line.startsWith('- ') || line.startsWith('  -')) {
+              return `<span class="text-red-400">${line}</span>`;
+            }
+            return `<span class="text-slate-400">${line}</span>`;
+          })
+          .join('\n');
+        
+        const modal = $("ai-refine-modal");
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+        
+        status.textContent = "✓ Review the proposed changes below";
+        
+      } catch (err) {
+        console.error("AI refine error:", err);
+        status.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function closeAiRefineModal() {
+      $("ai-refine-modal").classList.add("hidden");
+      $("ai-refine-modal").classList.remove("flex");
+      pendingRefinedSchema = null;
+    }
+
+    function applyAiRefinement() {
+      if (!pendingRefinedSchema) {
+        alert("No refinement pending.");
+        return;
+      }
+      
+      schemaJSON = pendingRefinedSchema;
+      sectionExpanded = {}; // Reset expansion state
+      Object.keys(schemaJSON).forEach(key => sectionExpanded[key] = true);
+      
+      closeAiRefineModal();
+      renderEditorView();
+      
+      $("ai-refine-instruction").value = "";
+      $("ai-refine-status").innerHTML = '<span class="text-emerald-400">✓ Changes applied successfully!</span>';
+      
+      setTimeout(() => {
+        $("ai-refine-status").classList.add("hidden");
+      }, 3000);
+    }
+
     // ----- Runs & reports -----
     async function refreshRunOptions() {
       try {
@@ -3468,6 +3729,22 @@
       $("category-edit-modal").onclick = (e) => {
         if (e.target.id === "category-edit-modal") closeCategoryModal();
       };
+
+      // AI Refinement handlers
+      $("ai-refine-toggle").onclick = toggleAiRefinePanel;
+      $("ai-refine-submit").onclick = handleAiRefineSubmit;
+      $("ai-refine-modal-close").onclick = closeAiRefineModal;
+      $("ai-refine-cancel").onclick = closeAiRefineModal;
+      $("ai-refine-apply").onclick = applyAiRefinement;
+      $("ai-refine-modal").onclick = (e) => {
+        if (e.target.id === "ai-refine-modal") closeAiRefineModal();
+      };
+      // Quick suggestion buttons
+      document.querySelectorAll(".ai-refine-suggestion").forEach(btn => {
+        btn.onclick = () => {
+          $("ai-refine-instruction").value = btn.dataset.instruction;
+        };
+      });
 
       $("btn-run-gemini").onclick = handleRunGemini;
       $("btn-refresh-folders").onclick = refreshRunOptions;
