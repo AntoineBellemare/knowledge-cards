@@ -313,18 +313,22 @@ SYSTEM_CARD = (
     "You are a precise textual extractor. Extract EXACTLY what the text states.\n"
     "Return strictly valid JSON matching the schema provided. Do not add fields.\n\n"
     "QUALITY PRINCIPLES:\n"
-    "- PRESERVE qualifiers and hedges ('perhaps', 'in some cases')\n"
+    "- PRESERVE qualifiers and hedges ('perhaps', 'in some cases', 'arguably')\n"
     "- DISTINGUISH author claims vs. views they cite/critique\n"
     "- Capture key definitions, arguments, methods, findings\n"
     "- Note acknowledged limitations or tensions\n\n"
-    "CONCISENESS PRINCIPLES:\n"
-    "- For list fields (limitations, findings, etc.): MAX 6-8 items total\n"
-    "- SYNTHESIZE similar points into single items (e.g., 3 exclusion criteria → 1 item)\n"
-    "- Prefer fewer, more informative items over many fragmentary ones\n\n"
+    "PRECISION - CRITICAL:\n"
+    "- NEVER write generic placeholders like 'Range of X explored' - give the ACTUAL values\n"
+    "- ALWAYS include specific numbers: parameters, effect sizes, sample sizes, p-values\n"
+    "- Example: 'tau=1-10ms, m=3-7' NOT 'Range of embedding parameters'\n"
+    "- If a value is mentioned, EXTRACT it\n\n"
+    "CONCISENESS:\n"
+    "- For list fields: aim for 8-12 substantive items (not fragmentary)\n"
+    "- Synthesize truly redundant points, but keep distinct findings/claims separate\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
-    "- 1-2 sentences each, ≤200 characters\n"
-    "- MAX 8-10 quotes per card total (select most important)\n"
-    "- Include ONLY the quote text + brief location hint: 'quote text' [Section]\n"
+    "- 1-3 sentences each, ≤250 characters\n"
+    "- Aim for 10-15 quotes per card (definitional, argumentatively crucial, key findings)\n"
+    "- Include quote text + brief location hint: 'quote text' [Section]\n"
     "- NEVER include chunk IDs, line numbers, DOI metadata, or copyright notices in quotes\n"
     "- NEVER copy bibliography/reference entries\n"
 )
@@ -379,19 +383,20 @@ EXTRACTION RULES:
 
 1. SCOPE: Extract ONLY content from THIS chunk.
 
-2. SELECTIVITY:
+2. PRECISION IS CRITICAL:
    - Extract KEY claims, definitions, methods, findings
-   - SYNTHESIZE related items (e.g., multiple exclusion criteria → single summary item)
-   - Preserve important qualifiers but condense verbose lists
+   - ALWAYS include SPECIFIC VALUES: numbers, parameters, ranges, effect sizes, sample sizes
+   - NEVER write generic placeholders like 'Range of X explored' - give ACTUAL values
+   - Example: 'tau=1-10ms, n=45 subjects, p<0.001' NOT 'Various parameters tested'
 
-3. QUOTES: Max 2-3 from this chunk:
-   - Only definitional or argumentatively crucial passages
+3. QUOTES: Max 3-4 from this chunk:
+   - Definitional or argumentatively crucial passages
    - Format: "quote text" [{section}]
-   - MAX 200 characters each - trim if needed
-   - CLEAN quotes: exclude line numbers, chunk IDs, DOI, copyright text, page markers
-   - NEVER include metadata like "CC-BY 4.0" or "doi:" in quotes
+   - MAX 250 characters each
+   - CLEAN quotes: exclude chunk IDs, DOI, copyright text
+   - NEVER copy bibliography entries
 
-4. FOR LISTS (limitations, methods, etc.): Keep concise - will be merged later.
+4. FOR LISTS: Include all relevant items from this chunk - will be merged later.
 
 Output: Valid JSON only.
 """
@@ -412,30 +417,28 @@ MERGE RULES:
 
 1. SMART DEDUPLICATION:
    - Merge items with SAME core meaning (even if phrased differently)
-   - Items with genuinely different claims or qualifiers → keep distinct
-   - Group related minor points into single synthesized items
+   - Items with genuinely different claims, qualifiers, or contexts → keep distinct
+   - When uncertain, lean toward keeping both
 
-2. ENFORCE LIMITS:
-   - Any list field (limitations, findings, methods, etc.): MAX 6-8 items
-   - If partials have 15+ items → synthesize into 6-8 most important
-   - Example: 10 exclusion criteria → "Excluded: n=3 for motion, imaging issues, or prior conditions"
+2. PRESERVE SPECIFICITY:
+   - ALWAYS keep specific values: numbers, parameters, effect sizes, sample sizes
+   - Definitions: preserve exact wording
+   - Findings: preserve conditions and qualifiers
+   - NEVER reduce specific values to generic descriptions
 
-3. QUOTES - STRICT SELECTION:
-   - MAX 8-10 quotes total for entire card (not per section)
-   - Select MOST important: definitional, core arguments, key findings
-   - CLEAN all quotes: strip chunk IDs, line numbers, DOI text, copyright notices
-   - Format: "quote" [Section] - nothing else
-   - Drop low-value quotes (generic statements, repetitive points)
+3. TARGET LIMITS (flexible):
+   - List fields: aim for 8-12 substantive items
+   - If partials have 20+ truly distinct items → synthesize minor ones, keep key ones
 
-4. PRESERVE WHAT MATTERS:
-   - Key definitions (exact wording)
-   - Core arguments and claims
-   - Main findings with qualifiers
-   - Acknowledged limitations (synthesized, not exhaustive list)
+4. QUOTES (aim for 10-15 total):
+   - Select most important: definitional, core arguments, key findings
+   - Diversity across sections (not all from one part)
+   - CLEAN all quotes: strip chunk IDs, DOI text, copyright notices
+   - Format: "quote" [Section]
 
-5. QUALITY OVER QUANTITY:
-   - A concise, well-organized card > an exhaustive verbose one
-   - Prefer synthesized items over fragmentary lists
+5. BALANCE:
+   - Substantive detail > extreme brevity
+   - But avoid redundancy and truly fragmentary items
 
 Output: Valid JSON only.
 """
