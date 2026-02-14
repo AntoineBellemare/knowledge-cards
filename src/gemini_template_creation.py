@@ -310,57 +310,21 @@ def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> D
 
 
 SYSTEM_CARD = (
-    "You are a precise textual extractor. Extract EXACTLY what the text states.\n"
-    "Return strictly valid JSON matching the schema provided. Do not add fields.\n\n"
-    "QUALITY PRINCIPLES:\n"
-    "- PRESERVE qualifiers and hedges ('perhaps', 'in some cases', 'arguably')\n"
-    "- DISTINGUISH author claims vs. views they cite/critique\n"
-    "- Capture key definitions, arguments, methods, findings\n"
-    "- Note acknowledged limitations or tensions\n\n"
-    "PRECISION - CRITICAL:\n"
-    "- NEVER write generic placeholders like 'Range of X explored' - give the ACTUAL values\n"
-    "- ALWAYS include specific numbers: parameters, effect sizes, sample sizes, p-values\n"
-    "- Example: 'tau=1-10ms, m=3-7' NOT 'Range of embedding parameters'\n"
-    "- If a value is mentioned, EXTRACT it\n\n"
-    "CONCISENESS:\n"
-    "- For list fields: aim for 8-12 substantive items (not fragmentary)\n"
-    "- Synthesize truly redundant points, but keep distinct findings/claims separate\n\n"
-    "LEAVE FIELDS EMPTY - CRITICAL:\n"
-    "- BETTER TO LEAVE EMPTY than fill with tangentially related content\n"
-    "- If paper doesn't DIRECTLY study/discuss a topic, leave that field empty\n"
-    "- Don't stretch content to fit fields - empty is honest\n"
-    "- Avoid repeating the same content across multiple fields\n\n"
-    "SEMANTIC MATCHING - CRITICAL:\n"
-    "- Each field name describes a SPECIFIC PHENOMENON - only that phenomenon belongs there\n"
-    "- SAME phenomenon, different terminology → INCLUDE\n"
-    "- DIFFERENT phenomenon, same research area → EXCLUDE (leave field empty)\n"
-    "- Ask: Does the paper actually STUDY/MEASURE the phenomenon this field names?\n"
-    "- If the paper studies phenomenon A, do NOT put that content in a field named 'phenomenon_B'\n"
-    "- Being about 'information' or 'brains' doesn't make all concepts interchangeable\n\n"
-    "TEMPLATE-PAPER MISMATCH DETECTION:\n"
-    "- If the template question asks about phenomenon X but the paper studies phenomenon Y:\n"
-    "  * Give a LOW relevance score (1-4)\n"
-    "  * Leave fields about phenomenon X EMPTY\n"
-    "  * In coverage_notes, explicitly state the paper doesn't study X\n"
-    "- Do NOT force-fit unrelated findings into template fields\n\n"
-    "FOR 'citation' OR 'quote' FIELDS:\n"
-    "- 1-3 sentences each, ≤250 characters\n"
-    "- STRICT LIMIT: 8-12 quotes MAXIMUM per card (only the most essential)\n"
-    "- Include quote text + brief location hint: 'quote text' [Section]\n"
-    "- NEVER include chunk IDs, line numbers, DOI metadata, or copyright notices in quotes\n"
-    "- NEVER copy bibliography/reference entries or methods citations\n"
+    "You are a meticulous research assistant. You extract **only** what is present in the text. "
+    "Return strictly valid JSON matching the schema provided. Do not add fields.\n"
+    "- NEVER copy the full references / bibliography section into any field.\n"
+    "- For any field whose name includes 'citation' or 'quote', store only SHORT, RELEVANT excerpts "
+    "(1–3 sentences, ≤300 characters), not entire reference entries.\n"
+    "- Ignore any plain reference listings when filling quote/citation fields (e.g., lines that are just "
+    "author/year/journal/DOI).\n"
+    "- Be concise, factual, and add tiny location hints like [Intro], [Methods], [Results] when obvious.\n"
 )
 
 
-def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str,
-                       question: Optional[str] = None) -> str:
-    question_block = ""
-    if question:
-        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question and each field's semantic meaning.\nIf the paper doesn't directly address a field's topic, LEAVE IT EMPTY - don't stretch tangential content to fit.\n"""
-    
+def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str) -> str:
     return f"""
 Fill the following JSON schema exactly (valid JSON only, no comments):
-{question_block}
+
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -374,16 +338,9 @@ TEXT:
 
 RULES (VERY IMPORTANT):
 - Populate every field in the schema. If unknown, use "" or [].
-- SEMANTIC MATCHING (CRITICAL):
-  * Each field describes a SPECIFIC PHENOMENON - only content about THAT phenomenon belongs there
-  * SAME phenomenon, different terms → INCLUDE (e.g., 'enaction' in 'embodiment' field)
-  * DIFFERENT phenomenon, same research area → EXCLUDE (they study different things)
-  * Being from the same discipline does NOT make different phenomena equivalent
 - Do NOT invent content.
-- If content is about a different phenomenon than the field name, leave the field EMPTY.
 - findings: short bullet points with concrete outcomes.
 - methods: include type (e.g., behavioral/EEG/fMRI/corpus/comp.), data, N if visible, and measures.
-- ALWAYS include SPECIFIC VALUES: numbers, parameters, effect sizes - not generic descriptions
 - For ANY field whose name contains 'citation' or 'quote':
     * Use ONLY short, relevant excerpts from the body of the paper, not from the References section.
     * Each item should be 1–3 sentences (≤300 characters), e.g. a key claim or a sentence with an in-text citation.
@@ -392,160 +349,70 @@ RULES (VERY IMPORTANT):
 - NEVER copy the full references / bibliography list into the JSON.
 - Ignore blocks that are clearly just reference entries (e.g., “Smith, J. (2019) … doi: …”).
 - Embodiment-like facets (if present in the schema): add short bullets with location hints like [Methods]/[Results]/[Discussion] when obvious.
-
-QUESTION RELEVANCE (REQUIRED - add these top-level fields):
-- "question_relevance_summary": 1-2 paragraphs summarizing HOW this paper answers the template question. Include:
-  * Key findings/concepts that directly address the question
-  * Specific methods, metrics, or frameworks relevant to the question
-  * Important values, parameters, or results
-  * What aspects of the question this paper illuminates vs. leaves unanswered
-  * EXPLICITLY STATE if the paper studies a DIFFERENT phenomenon than what the question asks about
-- "question_relevance_score": integer 1-10 rating:
-  * 9-10: Paper directly STUDIES THE PHENOMENON the question asks about
-  * 7-8: Substantially relevant, addresses major aspects of the question's phenomenon
-  * 5-6: Moderately relevant, provides useful context
-  * 3-4: Paper studies a RELATED BUT DIFFERENT phenomenon than the question asks about
-  * 1-2: Paper studies a COMPLETELY DIFFERENT phenomenon - minimal relevance
-  * NOTE: If question asks about phenomenon X but paper studies phenomenon Y, score should be 1-4 even if both are "information" topics
-
-COVERAGE HONESTY (REQUIRED - add this top-level field):
-- "coverage_notes": An object with these keys:
-  * "directly_addresses": list of template topics the paper DIRECTLY studies/measures
-  * "tangentially_mentions": list of topics mentioned but not deeply explored
-  * "not_addressed": list of template topics the paper doesn't cover
-  * "phenomenon_mismatch": if paper studies a different phenomenon than the template asks about, state it here
-
 - JSON only.
 """
 
-def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, 
-                     question: Optional[str] = None) -> str:
-    question_block = ""
-    if question:
-        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question.\nIf content doesn't relate to a field's semantic meaning, leave it empty.\n"""
-    
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str) -> str:
     return f"""
-Extract from this chunk into the JSON schema. Fill ONLY fields this chunk addresses; leave others "" or [].
-{question_block}
+You will fill the same JSON schema **partially** from this chunk **only**. If a field isn't covered here, leave it "" or [].
+
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
-TEXT: "{title}" ({filename})
-SECTION: {section}
+PAPER:
+- approx_title: "{title}"
+- file: {filename}
+- chunk_section: {section}
 
 CHUNK:
 \"\"\"{chunk_text}\"\"\"
 
 
-EXTRACTION RULES:
-
-1. SEMANTIC MATCHING (CRITICAL):
-   - Each field describes a SPECIFIC PHENOMENON - only that phenomenon belongs there
-   - SAME phenomenon, different terminology → INCLUDE
-   - DIFFERENT phenomenon, same research area → EXCLUDE
-   - Ask: Is this about THE SAME PHENOMENON the field name describes?
-   - If NO (it's a different phenomenon) → leave the field EMPTY
-
-2. PRECISION IS CRITICAL:
-   - Extract KEY claims, definitions, methods, findings
-   - ALWAYS include SPECIFIC VALUES: numbers, parameters, ranges, effect sizes, sample sizes
-   - NEVER write generic placeholders like 'Range of X explored' - give ACTUAL values
-   - Example: 'tau=1-10ms, n=45 subjects, p<0.001' NOT 'Various parameters tested'
-
-3. QUOTES: Max 2 from this chunk (VERY selective):
-   - ONLY definitional statements or truly crucial findings
-   - Skip: methods details, statistics, figure captions, reference citations
-   - Format: "quote text" [{section}]
-   - MAX 250 characters each
-   - CLEAN quotes: exclude chunk IDs, DOI, copyright text
-
-4. FOR LISTS: Include all relevant items from this chunk - will be merged later.
-
-Output: Valid JSON only.
+RULES (VERY IMPORTANT):
+- Extract ONLY from this chunk.
+- Do NOT invent content.
+- For any field whose name contains 'citation' or 'quote':
+    * Extract quotes that are insightful, contain key claims, or have vivid phrasing.
+    * Max 3-4 quotes per chunk, each ≤250 characters.
+    * Add location hint: [chunk: {section}].
+    * Do NOT copy reference lists or bibliographic entries.
+- For list fields: extract relevant items from this chunk.
+- Ignore pure reference entries (author/year/journal/DOI).
+- JSON only.
 """
 
-def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]],
-                  question: Optional[str] = None) -> str:
-    question_block = ""
-    if question:
-        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nDuring merge, REMOVE any content that doesn't actually relate to each field's semantic meaning.\n"""
-    
+def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
     return f"""
-Merge these PARTIAL extractions into a single FINAL card.
-{question_block}
+Merge these PARTIAL JSON cards into a single, concise FINAL card that still conforms to the SCHEMA exactly.
+
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
-TEXT: "{title}" ({filename})
+PAPER:
+- approx_title: "{title}"
+- file: {filename}
 
 PARTIALS:
 {json.dumps(partial_cards, ensure_ascii=False, indent=2)}
 
-MERGE RULES:
-
-1. SEMANTIC VALIDATION (CRITICAL - MOST IMPORTANT RULE):
-   - Each field describes a SPECIFIC PHENOMENON - validate content matches that phenomenon
-   - KEEP: Content about the same phenomenon (even if using different terminology)
-   - REMOVE: Content about a different phenomenon (even if from the same research area)
-   - Ask: Is this about THE SAME PHENOMENON the field name describes, or something else?
-   - If it's a DIFFERENT phenomenon → REMOVE it from that field
-
-2. SMART DEDUPLICATION:
-   - Merge items with SAME core meaning (even if phrased differently)
-   - Items with genuinely different claims, qualifiers, or contexts → keep distinct
-   - When uncertain, lean toward keeping both
-
-3. PRESERVE SPECIFICITY:
-   - ALWAYS keep specific values: numbers, parameters, effect sizes, sample sizes
-   - Definitions: preserve exact wording
-   - Findings: preserve conditions and qualifiers
-   - NEVER reduce specific values to generic descriptions
-
-4. TARGET LIMITS (flexible):
-   - List fields: aim for 8-12 substantive items
-   - If partials have 20+ truly distinct items → synthesize minor ones, keep key ones
-
-5. QUOTES - STRICT LIMIT (8-12 MAXIMUM, prefer fewer):
-   - AGGRESSIVELY FILTER: keep only essential quotes (definitions, pivotal findings)
-   - REMOVE: methods citations, statistical boilerplate, reference list entries, figure descriptions
-   - If partials have 30+ quotes → select ONLY the 8-10 most important
-   - Diversity across sections; no duplicates or near-duplicates
-   - CLEAN all quotes: strip chunk IDs, DOI text, copyright notices
-
-6. BALANCE:
-   - Substantive detail > extreme brevity
-   - But avoid redundancy and truly fragmentary items
-
-7. COVERAGE HONESTY (REQUIRED - add this top-level field):
-   - "coverage_notes": An object with these keys:
-     * "directly_addresses": list of template topics the paper DIRECTLY studies/measures
-     * "tangentially_mentions": list of topics the paper mentions but doesn't deeply explore
-     * "not_addressed": list of template topics the paper doesn't cover at all
-     * "phenomenon_mismatch": if paper studies a different phenomenon than the template asks about, state it here
-   - If the paper doesn't directly address certain template fields, leave them EMPTY
-   - Don't stretch findings to fit fields they don't match
-
-8. QUESTION RELEVANCE (REQUIRED - add these top-level fields):
-   - "question_relevance_summary": 1-2 paragraphs summarizing HOW this paper answers the template question:
-     * Key findings/concepts that directly address the question
-     * Specific methods, metrics, or frameworks relevant to the question  
-     * Important values, parameters, or results
-     * What aspects of the question this paper illuminates vs. leaves unanswered
-     * EXPLICITLY STATE if the paper studies a DIFFERENT phenomenon than what the question asks about
-   - "question_relevance_score": integer 1-10:
-     * 9-10: Paper directly STUDIES THE PHENOMENON the question asks about
-     * 7-8: Substantially relevant, addresses major aspects of the question's phenomenon
-     * 5-6: Moderately relevant, provides useful context
-     * 3-4: Paper studies a RELATED BUT DIFFERENT phenomenon than the question asks about
-     * 1-2: Paper studies a COMPLETELY DIFFERENT phenomenon - minimal relevance
-     * NOTE: If question asks about X but paper studies Y, score 1-4 even if both are "information" topics
-
-Output: Valid JSON only.
+MERGE RULES (VERY IMPORTANT):
+- Union/merge lists; deduplicate similar items.
+- Prefer more specific/quantified info when conflicts.
+- Keep methods coherent (type, data, N if present, measures).
+- findings: Concise bullets (max 6) reflecting the paper's main results. Summarize related findings together.
+- For any field whose name contains 'citation' or 'quote':
+    * Keep the MOST impactful, non-redundant quotes (aim for 8-12 total for long papers).
+    * Merge or drop quotes that say essentially the same thing.
+    * Each quote should be ≤250 characters. Trim longer ones while preserving meaning.
+    * Drop generic statements, reference lines, or bibliographic text.
+    * Prioritize quotes with specific claims, data, or unique phrasing.
+- For list fields (except citations/quotes): max 6 items. Merge similar items.
+- If a field remains unknown overall, keep "" or [].
+- Return FINAL JSON only.
 """
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
-                      batch_size: int = 4, progress_callback=None, global_progress: dict = None,
-                      question: Optional[str] = None) -> Dict[str, Any]:
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None) -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -579,7 +446,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     # If total is small enough (< 30KB) and few cards, reduce directly in one pass
     if len(partial_cards) <= batch_size and total_chars < 30000:
         report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
-        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
+        user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're too large, we still need to reduce them
@@ -587,7 +454,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     if len(partial_cards) == 2 and total_chars >= 30000:
         # Can't batch further, just try to reduce the 2 cards
         report_progress(f"{filename}: merging 2 large cards")
-        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
+        user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're large, reduce batch size
@@ -609,7 +476,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     def process_batch(batch_info):
         batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
-        user = prompt_reduce(schema, title, filename, batch, question=question)
+        user = prompt_reduce(schema, title, filename, batch)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     intermediate_cards = []
@@ -631,7 +498,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
-    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress, question=question)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress)
 
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
@@ -641,7 +508,7 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
                        global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
-                       model_reduction: Optional[str] = None, question: Optional[str] = None) -> Dict[str, Any]:
+                       model_reduction: Optional[str] = None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
@@ -650,7 +517,6 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     cancellation_check: Optional callable that returns True if job should be cancelled
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
-    question: Original question/purpose of the template for context-aware extraction
     """
     global GEMINI_MODEL
     
@@ -677,7 +543,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if text_size_ok(sections):
         report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
-        user = prompt_single_pass(schema, title, pdf_path.name, full_text, question=question)
+        user = prompt_single_pass(schema, title, pdf_path.name, full_text)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -702,7 +568,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question)
+        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
             
@@ -767,7 +633,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if not partials:
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
         clipped = " ".join("\n\n".join(t for _, t in sections).split()[:30000])
-        user = prompt_single_pass(schema, title, pdf_path.name, clipped, question=question)
+        user = prompt_single_pass(schema, title, pdf_path.name, clipped)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -788,10 +654,10 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
-                                  progress_callback=progress_callback, global_progress=None, question=question)
+                                  progress_callback=progress_callback, global_progress=None)
     else:
         # Single-pass reduction for shorter documents
-        user = prompt_reduce(schema, title, pdf_path.name, partials, question=question)
+        user = prompt_reduce(schema, title, pdf_path.name, partials)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # Restore original model
@@ -890,21 +756,6 @@ def compact_row(card: Dict[str, Any]) -> Dict[str, Any]:
         if top_key in card:
             _flat_counts(top_key, card[top_key], row)
 
-    # Add question relevance fields
-    row["relevance_score"] = card.get("question_relevance_score", "")
-    summary = card.get("question_relevance_summary", "")
-    row["relevance_summary"] = (summary[:300] + "...") if len(summary) > 300 else summary
-
-    # Add coverage notes summary
-    coverage = card.get("coverage_notes", {})
-    if isinstance(coverage, dict):
-        directly = coverage.get("directly_addresses", [])
-        row["directly_addresses"] = ", ".join(directly[:5]) if directly else ""
-        not_covered = coverage.get("not_addressed", [])
-        row["not_addressed"] = ", ".join(not_covered[:5]) if not_covered else ""
-        mismatch = coverage.get("phenomenon_mismatch", "")
-        row["phenomenon_mismatch"] = (mismatch[:150] + "...") if len(mismatch) > 150 else mismatch
-
     # Also count any top-level lists
     for k, v in card.items():
         if k.startswith("_"): 
@@ -977,7 +828,7 @@ def run_gemini_cards(
 
     for pdf in pdfs:
         try:
-            card = build_card_for_pdf(pdf, schema, question=template_question)
+            card = build_card_for_pdf(pdf, schema)
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
@@ -1161,8 +1012,7 @@ def run_gemini_cards_with_progress(
                 global_progress=None,
                 cancellation_check=cancellation_check,
                 batch_size=batch_size,
-                model_reduction=model_reduce,
-                question=template_question
+                model_reduction=model_reduce
             )
             cards.append(card)
         except Exception as e:
