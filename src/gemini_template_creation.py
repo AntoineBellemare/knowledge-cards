@@ -325,6 +325,11 @@ SYSTEM_CARD = (
     "CONCISENESS:\n"
     "- For list fields: aim for 8-12 substantive items (not fragmentary)\n"
     "- Synthesize truly redundant points, but keep distinct findings/claims separate\n\n"
+    "LEAVE FIELDS EMPTY - CRITICAL:\n"
+    "- BETTER TO LEAVE EMPTY than fill with tangentially related content\n"
+    "- If paper doesn't DIRECTLY study/discuss a topic, leave that field empty\n"
+    "- Don't stretch content to fit fields - empty is honest\n"
+    "- Avoid repeating the same content across multiple fields\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
     "- 1-3 sentences each, ≤250 characters\n"
     "- STRICT LIMIT: 8-12 quotes MAXIMUM per card (only the most essential)\n"
@@ -338,7 +343,7 @@ def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fullte
                        question: Optional[str] = None) -> str:
     question_block = ""
     if question:
-        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question and each field's semantic meaning.\n"""
+        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question and each field's semantic meaning.\nIf the paper doesn't directly address a field's topic, LEAVE IT EMPTY - don't stretch tangential content to fit.\n"""
     
     return f"""
 Fill the following JSON schema exactly (valid JSON only, no comments):
@@ -398,6 +403,7 @@ EXTRACTION RULES:
    - "methodological_recommendations" = actual recommendations for methods
    - Do NOT put unrelated content in a field just because you extracted something
    - If no content matches a field, leave it EMPTY
+   - BETTER TO LEAVE EMPTY than include tangentially related content
 
 2. PRECISION IS CRITICAL:
    - Extract KEY claims, definitions, methods, findings
@@ -441,6 +447,8 @@ MERGE RULES:
    - REMOVE items that don't actually match the field's semantic intent
    - "temporal_scaling" should contain content about scaling across TIME, not random findings
    - Better to leave a field empty than fill it with irrelevant content
+   - If paper doesn't DIRECTLY STUDY a topic, leave those fields EMPTY
+   - Don't repeat same content across multiple fields
 
 2. SMART DEDUPLICATION:
    - Merge items with SAME core meaning (even if phrased differently)
@@ -467,6 +475,11 @@ MERGE RULES:
 6. BALANCE:
    - Substantive detail > extreme brevity
    - But avoid redundancy and truly fragmentary items
+
+7. COVERAGE HONESTY:
+   - If the paper doesn't directly address certain template fields, leave them EMPTY
+   - Add a top-level field "coverage_notes" listing: what the paper DIRECTLY addresses vs. only mentions tangentially
+   - Don't stretch findings to fit fields they don't match
 
 Output: Valid JSON only.
 """
