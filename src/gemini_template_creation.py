@@ -330,6 +330,13 @@ SYSTEM_CARD = (
     "- If paper doesn't DIRECTLY study/discuss a topic, leave that field empty\n"
     "- Don't stretch content to fit fields - empty is honest\n"
     "- Avoid repeating the same content across multiple fields\n\n"
+    "SEMANTIC MATCHING - IMPORTANT:\n"
+    "- Each field name indicates a TOPIC AREA - content should be conceptually related\n"
+    "- ALLOW: Legitimately related concepts (e.g., 'embodiment' includes bodily experience, sensorimotor, enaction)\n"
+    "- PREVENT: Unrelated content that doesn't connect to the field's topic at all\n"
+    "- Ask: Is this content genuinely ABOUT the topic this field represents?\n"
+    "- If content is about a completely different topic, leave the field empty\n"
+    "- When uncertain whether concepts relate, consider the intellectual tradition and context\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
     "- 1-3 sentences each, ≤250 characters\n"
     "- STRICT LIMIT: 8-12 quotes MAXIMUM per card (only the most essential)\n"
@@ -361,8 +368,13 @@ TEXT:
 
 RULES (VERY IMPORTANT):
 - Populate every field in the schema. If unknown, use "" or [].
-- SEMANTIC MATCHING: Each field name describes what content belongs there - don't put unrelated content in a field
+- SEMANTIC MATCHING:
+  * Each field name indicates a TOPIC AREA - content should be genuinely about that topic
+  * Include conceptually related content (e.g., 'emergence' can include self-organization, collective behavior)
+  * EXCLUDE content that's about a completely different topic, even if from the same paper
+  * WHEN IN DOUBT about relatedness, consider the intellectual context
 - Do NOT invent content.
+- Do NOT fill fields with unrelated content just because you extracted something.
 - findings: short bullet points with concrete outcomes.
 - methods: include type (e.g., behavioral/EEG/fMRI/corpus/comp.), data, N if visible, and measures.
 - ALWAYS include SPECIFIC VALUES: numbers, parameters, effect sizes - not generic descriptions
@@ -388,6 +400,12 @@ QUESTION RELEVANCE (REQUIRED - add these top-level fields):
   * 3-4: Tangentially related, only touches on the question
   * 1-2: Minimally relevant, mostly off-topic
 
+COVERAGE HONESTY (REQUIRED - add this top-level field):
+- "coverage_notes": An object with these keys:
+  * "directly_addresses": list of template topics the paper DIRECTLY studies
+  * "tangentially_mentions": list of topics mentioned but not deeply explored
+  * "not_addressed": list of template topics the paper doesn't cover
+
 - JSON only.
 """
 
@@ -412,12 +430,13 @@ CHUNK:
 
 EXTRACTION RULES:
 
-1. SEMANTIC MATCHING (CRITICAL):
-   - Each field name describes what content belongs there
-   - "methodological_recommendations" = actual recommendations for methods
-   - Do NOT put unrelated content in a field just because you extracted something
-   - If no content matches a field, leave it EMPTY
-   - BETTER TO LEAVE EMPTY than include tangentially related content
+1. SEMANTIC MATCHING (IMPORTANT):
+   - Each field name indicates a TOPIC AREA - content should be genuinely related
+   - ALLOW: Conceptually connected ideas (terms from the same intellectual tradition)
+   - PREVENT: Completely unrelated content that doesn't connect to the field's topic
+   - Ask: Is this content genuinely ABOUT or RELATED TO the topic this field represents?
+   - If NO connection at all → leave the field EMPTY for this chunk
+   - When uncertain, consider whether experts would see a conceptual link
 
 2. PRECISION IS CRITICAL:
    - Extract KEY claims, definitions, methods, findings
@@ -456,13 +475,13 @@ PARTIALS:
 
 MERGE RULES:
 
-1. SEMANTIC VALIDATION (CRITICAL):
-   - Review each field's content against its NAME/MEANING
-   - REMOVE items that don't actually match the field's semantic intent
-   - "temporal_scaling" should contain content about scaling across TIME, not random findings
-   - Better to leave a field empty than fill it with irrelevant content
-   - If paper doesn't DIRECTLY STUDY a topic, leave those fields EMPTY
-   - Don't repeat same content across multiple fields
+1. SEMANTIC VALIDATION (IMPORTANT - FIRST STEP):
+   - Review each field's content: Is it genuinely ABOUT or RELATED TO that topic?
+   - KEEP: Content with clear conceptual connection to the field's topic
+   - REMOVE: Content that's about a completely different subject
+   - Ask: Would an expert consider this content relevant to the field's topic?
+   - If NO meaningful connection → remove that content from the field
+   - Balance: Allow related concepts, prevent obvious topic drift
 
 2. SMART DEDUPLICATION:
    - Merge items with SAME core meaning (even if phrased differently)
@@ -490,9 +509,12 @@ MERGE RULES:
    - Substantive detail > extreme brevity
    - But avoid redundancy and truly fragmentary items
 
-7. COVERAGE HONESTY:
+7. COVERAGE HONESTY (REQUIRED - add this top-level field):
+   - "coverage_notes": An object with these keys:
+     * "directly_addresses": list of template topics the paper DIRECTLY studies/investigates
+     * "tangentially_mentions": list of topics the paper mentions but doesn't deeply explore
+     * "not_addressed": list of template topics the paper doesn't cover at all
    - If the paper doesn't directly address certain template fields, leave them EMPTY
-   - Add a top-level field "coverage_notes" listing: what the paper DIRECTLY addresses vs. only mentions tangentially
    - Don't stretch findings to fit fields they don't match
 
 8. QUESTION RELEVANCE (REQUIRED - add these top-level fields):
@@ -862,6 +884,14 @@ def compact_row(card: Dict[str, Any]) -> Dict[str, Any]:
     row["relevance_score"] = card.get("question_relevance_score", "")
     summary = card.get("question_relevance_summary", "")
     row["relevance_summary"] = (summary[:300] + "...") if len(summary) > 300 else summary
+
+    # Add coverage notes summary
+    coverage = card.get("coverage_notes", {})
+    if isinstance(coverage, dict):
+        directly = coverage.get("directly_addresses", [])
+        row["directly_addresses"] = ", ".join(directly[:5]) if directly else ""
+        not_covered = coverage.get("not_addressed", [])
+        row["not_addressed"] = ", ".join(not_covered[:5]) if not_covered else ""
 
     # Also count any top-level lists
     for k, v in card.items():
