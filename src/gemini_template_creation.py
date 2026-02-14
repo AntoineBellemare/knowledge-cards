@@ -374,6 +374,20 @@ RULES (VERY IMPORTANT):
 - NEVER copy the full references / bibliography list into the JSON.
 - Ignore blocks that are clearly just reference entries (e.g., “Smith, J. (2019) … doi: …”).
 - Embodiment-like facets (if present in the schema): add short bullets with location hints like [Methods]/[Results]/[Discussion] when obvious.
+
+QUESTION RELEVANCE (REQUIRED - add these top-level fields):
+- "question_relevance_summary": 1-2 paragraphs summarizing HOW this paper answers the template question. Include:
+  * Key findings/concepts that directly address the question
+  * Specific methods, metrics, or frameworks relevant to the question
+  * Important values, parameters, or results
+  * What aspects of the question this paper illuminates vs. leaves unanswered
+- "question_relevance_score": integer 1-10 rating:
+  * 9-10: Directly answers the question with core findings/methods
+  * 7-8: Substantially relevant, addresses major aspects
+  * 5-6: Moderately relevant, provides useful context or partial answers
+  * 3-4: Tangentially related, only touches on the question
+  * 1-2: Minimally relevant, mostly off-topic
+
 - JSON only.
 """
 
@@ -480,6 +494,19 @@ MERGE RULES:
    - If the paper doesn't directly address certain template fields, leave them EMPTY
    - Add a top-level field "coverage_notes" listing: what the paper DIRECTLY addresses vs. only mentions tangentially
    - Don't stretch findings to fit fields they don't match
+
+8. QUESTION RELEVANCE (REQUIRED - add these top-level fields):
+   - "question_relevance_summary": 1-2 paragraphs summarizing HOW this paper answers the template question:
+     * Key findings/concepts that directly address the question
+     * Specific methods, metrics, or frameworks relevant to the question  
+     * Important values, parameters, or results
+     * What aspects of the question this paper illuminates vs. leaves unanswered
+   - "question_relevance_score": integer 1-10:
+     * 9-10: Directly answers the question with core findings/methods
+     * 7-8: Substantially relevant, addresses major aspects
+     * 5-6: Moderately relevant, provides useful context or partial answers
+     * 3-4: Tangentially related, only touches on the question
+     * 1-2: Minimally relevant, mostly off-topic
 
 Output: Valid JSON only.
 """
@@ -830,6 +857,11 @@ def compact_row(card: Dict[str, Any]) -> Dict[str, Any]:
     for top_key in ("embodied_facets", "embodiment_facets", "perceptual_systems", "symbolic_systems_and_models"):
         if top_key in card:
             _flat_counts(top_key, card[top_key], row)
+
+    # Add question relevance fields
+    row["relevance_score"] = card.get("question_relevance_score", "")
+    summary = card.get("question_relevance_summary", "")
+    row["relevance_summary"] = (summary[:300] + "...") if len(summary) > 300 else summary
 
     # Also count any top-level lists
     for k, v in card.items():
