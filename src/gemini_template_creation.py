@@ -315,7 +315,6 @@ def describe_schema_with_paths(schema: Dict[str, Any], parent_path: str = "") ->
     for key, value in schema.items():
         current_path = f"{parent_path}.{key}" if parent_path else key
         if isinstance(value, dict):
-            # Check if it's a leaf dict (has description or simple values) or nested structure
             has_nested_dicts = any(isinstance(v, dict) for v in value.values())
             if has_nested_dicts:
                 lines.append(f"- {current_path}: (category)")
@@ -334,14 +333,21 @@ def describe_schema_with_paths(schema: Dict[str, Any], parent_path: str = "") ->
 
 
 SYSTEM_CARD = (
-    "You are a meticulous research assistant. You extract **only** what is present in the text. "
-    "Return strictly valid JSON matching the schema provided. Do not add fields.\n"
-    "- NEVER copy the full references / bibliography section into any field.\n"
-    "- For any field whose name includes 'citation' or 'quote', store only SHORT, RELEVANT excerpts "
-    "(1–3 sentences, ≤300 characters), not entire reference entries.\n"
-    "- Ignore any plain reference listings when filling quote/citation fields (e.g., lines that are just "
-    "author/year/journal/DOI).\n"
-    "- Be concise, factual, and add tiny location hints like [Intro], [Methods], [Results] when obvious.\n"
+    "You are a scholarly research analyst with expertise in extracting conceptually rich information. "
+    "Your task is to populate JSON schemas with SUBSTANTIVE, CONCEPTUALLY ACCURATE content.\n\n"
+    "CORE PRINCIPLES:\n"
+    "- SEMANTIC FIDELITY: Each field must contain information that genuinely matches its conceptual category. "
+    "Read the field name and any description carefully - the content must semantically belong there.\n"
+    "- CONCEPTUAL DEPTH: Avoid superficial bullet points. Provide explanatory content that captures the "
+    "underlying ideas, mechanisms, relationships, or theoretical implications.\n"
+    "- HIERARCHICAL AWARENESS: When filling a nested field, consider its parent category. Content in "
+    "'ontology_of_language.core_metaphors' must be about language ontology, not general metaphors.\n"
+    "- GROUNDED EXTRACTION: Extract only what is present in the text. Do not invent or hallucinate.\n\n"
+    "FORMATTING:\n"
+    "- Return strictly valid JSON matching the schema. Do not add fields.\n"
+    "- For 'citation' or 'quote' fields: use SHORT excerpts (1-3 sentences, max 300 chars) from the body, "
+    "not from References. Add location hints like [Intro], [Discussion].\n"
+    "- Never copy bibliography/reference sections.\n"
 )
 
 
@@ -352,18 +358,21 @@ def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fullte
 GENERAL QUESTION (the inquiry this card template was designed to explore):
 \"{question}\"
 
-IMPORTANT: Start your JSON with a "paper_summary_on_question" field (2-4 sentences) summarizing what THIS paper specifically contributes to answering or illuminating the general question above.
+START your JSON with a "paper_summary_on_question" field (2-4 substantive sentences) that synthesizes:
+- What specific aspect of this question the paper addresses
+- The paper's main contribution or stance on this question
+- Key insights or findings relevant to the inquiry
 """
     
     schema_paths = describe_schema_with_paths(schema)
     
     return f"""
-Fill the following JSON schema exactly (valid JSON only, no comments):
+Populate this JSON schema with CONCEPTUALLY RICH, SUBSTANTIVE content:
 {question_context}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
-SCHEMA STRUCTURE (for context - each field belongs to a parent category):
+SCHEMA STRUCTURE (each field belongs to a parent category - ensure semantic fit):
 {schema_paths}
 
 PAPER:
@@ -374,8 +383,146 @@ TEXT:
 \"\"\"{fulltext}\"\"\"
 
 
-RULES (VERY IMPORTANT):
-- Populate every field in the schema. If unknown, use "" or [].
+EXTRACTION GUIDELINES:
+
+1. CONCEPTUAL MATCHING (CRITICAL):
+   - Before filling any field, ask: Does this content genuinely belong to this conceptual category?
+   - A field like "ontological_categories" needs content about ontology, not just any categorization
+   - Match the SEMANTIC INTENT of each field, not just keywords
+
+2. DEPTH OVER BREVITY:
+   - For description fields: Write 2-4 sentences that explain the concept, mechanism, or idea
+   - For list fields: Each item should be a meaningful phrase or sentence, not just a keyword
+   - Capture WHY and HOW, not just WHAT
+   - Include theoretical context, relationships between concepts, and implications
+
+3. HIERARCHICAL COHERENCE:
+   - Content in nested fields must fit both the immediate field AND its parent category
+
+4. CITATION/QUOTE FIELDS:
+   - Select quotes that illuminate key theoretical claims or unique insights
+   - 1-3 sentences each, max 300 characters
+   - Add location hints: [Intro], [Methods], [Results], [Discussion]
+   - Max 5 per field
+
+5. UNKNOWN FIELDS: Use "" or [] - never invent content
+
+Return valid JSON only.
+"""
+
+
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, question: str = "") -> str:
+    question_context = ""
+    if question:
+        question_context = f"""
+GENERAL QUESTION guiding this extraction:
+\"{question}\"
+
+Prioritize content that illuminates this question. Look for theoretical claims, mechanisms, and conceptual insights.
+"""
+    
+    schema_paths = describe_schema_with_paths(schema)
+    
+    return f"""
+Extract PARTIAL content from this chunk into the JSON schema. Leave fields empty (""/[]) if not covered.
+{question_context}
+SCHEMA:
+{json.dumps(schema, ensure_ascii=False, indent=2)}
+
+SCHEMA STRUCTURE (match content to the RIGHT conceptual category):
+{schema_paths}
+
+PAPER: "{title}"
+CHUNK SECTION: {section}
+
+CHUNK:
+\"\"\"{chunk_text}\"\"\"
+
+
+EXTRACTION PRINCIPLES:
+
+1. SEMANTIC PRECISION:
+   - Only place content in a field if it GENUINELY matches that field's conceptual domain
+   - "mechanisms_of_creation" needs actual mechanisms, not just mentions of creation
+   - When uncertain, leave empty rather than force a poor semantic fit
+
+2. SUBSTANTIVE CONTENT:
+   - Extract meaningful explanations, not just isolated terms
+   - Capture the reasoning, relationships, and theoretical context
+   - For lists: each item should convey a complete idea (phrase or sentence)
+
+3. PARENT-AWARE FILLING:
+   - Check the field's parent category before filling
+   - Content must relate to BOTH the immediate field AND its parent category
+
+4. QUOTES: Select conceptually rich excerpts (max 250 chars), add [chunk: {section}] hint. Max 3-4 per chunk.
+
+5. IGNORE: Reference entries, bibliographic citations, page numbers.
+
+Return valid JSON only.
+"""
+
+
+def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], question: str = "") -> str:
+    question_context = ""
+    if question:
+        question_context = f"""
+GENERAL QUESTION:
+\"{question}\"
+
+SYNTHESIZE a "paper_summary_on_question" field (2-4 sentences) at the TOP of your JSON:
+- What this paper specifically contributes to the question
+- Its main theoretical stance or empirical findings on the topic
+- Key conceptual insights relevant to the inquiry
+"""
+    
+    return f"""
+Synthesize these PARTIAL extractions into a single, CONCEPTUALLY COHERENT final card.
+{question_context}
+SCHEMA:
+{json.dumps(schema, ensure_ascii=False, indent=2)}
+
+PAPER: "{title}" ({filename})
+
+PARTIALS:
+{json.dumps(partial_cards, ensure_ascii=False, indent=2)}
+
+SYNTHESIS GUIDELINES:
+
+1. CONCEPTUAL COHERENCE (CRITICAL):
+   - Do not just concatenate items - SYNTHESIZE them into coherent content
+   - If multiple partials have related content for a field, integrate them into a unified explanation
+   - Ensure final content genuinely matches each field's semantic domain
+   - Remove items that do not fit the field's conceptual category
+
+2. DEPTH AND SUBSTANCE:
+   - Description fields: 2-4 sentences that explain concepts, mechanisms, relationships
+   - List fields: Each item should be a meaningful phrase/sentence, not keywords
+   - Capture the WHY and HOW behind findings, not just surface observations
+   - Preserve theoretical nuance and conceptual richness
+
+3. INTELLIGENT MERGING:
+   - Deduplicate semantically similar items (not just identical ones)
+   - When items conflict, prefer the more specific or theoretically grounded version
+   - For methods: synthesize into coherent description (type, data, N, measures)
+   - For findings: group related results, aim for 4-6 substantive bullets
+
+4. QUOTES/CITATIONS:
+   - Keep 8-12 most conceptually illuminating quotes for long papers
+   - Each max 250 chars, with location hints
+   - Prioritize quotes with theoretical claims, unique insights, or key evidence
+   - Drop generic statements and anything from reference sections
+
+5. UNKNOWN: Keep "" or [] - never fabricate
+
+Return valid JSON only.
+"""
+
+
+def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None,
+                      question: str = "") -> Dict[str, Any]:
+    """
 - Do NOT invent content.
 - findings: short bullet points with concrete outcomes.
 - methods: include type (e.g., behavioral/EEG/fMRI/corpus/comp.), data, N if visible, and measures.
@@ -390,26 +537,12 @@ RULES (VERY IMPORTANT):
 - JSON only.
 """
 
-def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, question: str = "") -> str:
-    question_context = ""
-    if question:
-        question_context = f"""
-GENERAL QUESTION (the inquiry this card template was designed to explore):
-\"{question}\"
-
-Keep this question in mind when extracting content - prioritize information relevant to this inquiry.
-"""
-    
-    schema_paths = describe_schema_with_paths(schema)
-    
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str) -> str:
     return f"""
 You will fill the same JSON schema **partially** from this chunk **only**. If a field isn't covered here, leave it "" or [].
-{question_context}
+
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
-
-SCHEMA STRUCTURE (each field belongs to a parent category - fill fields with awareness of their parent context):
-{schema_paths}
 
 PAPER:
 - approx_title: "{title}"
@@ -433,19 +566,10 @@ RULES (VERY IMPORTANT):
 - JSON only.
 """
 
-def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], question: str = "") -> str:
-    question_context = ""
-    if question:
-        question_context = f"""
-GENERAL QUESTION (the inquiry this card template was designed to explore):
-\"{question}\"
-
-IMPORTANT: Add a "paper_summary_on_question" field at the TOP of your JSON (2-4 sentences) that synthesizes what THIS paper specifically contributes to answering or illuminating the general question above.
-"""
-    
+def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
     return f"""
 Merge these PARTIAL JSON cards into a single, concise FINAL card that still conforms to the SCHEMA exactly.
-{question_context}
+
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -473,8 +597,7 @@ MERGE RULES (VERY IMPORTANT):
 """
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
-                      batch_size: int = 4, progress_callback=None, global_progress: dict = None,
-                      question: str = "") -> Dict[str, Any]:
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None) -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -508,7 +631,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     # If total is small enough (< 30KB) and few cards, reduce directly in one pass
     if len(partial_cards) <= batch_size and total_chars < 30000:
         report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
-        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
+        user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're too large, we still need to reduce them
@@ -516,7 +639,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     if len(partial_cards) == 2 and total_chars >= 30000:
         # Can't batch further, just try to reduce the 2 cards
         report_progress(f"{filename}: merging 2 large cards")
-        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
+        user = prompt_reduce(schema, title, filename, partial_cards)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're large, reduce batch size
@@ -538,7 +661,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     def process_batch(batch_info):
         batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
-        user = prompt_reduce(schema, title, filename, batch, question=question)
+        user = prompt_reduce(schema, title, filename, batch)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     intermediate_cards = []
@@ -560,7 +683,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
-    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress, question=question)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress)
 
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
@@ -570,7 +693,7 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
                        global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
-                       model_reduction: Optional[str] = None, question: str = "") -> Dict[str, Any]:
+                       model_reduction: Optional[str] = None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
@@ -579,7 +702,6 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     cancellation_check: Optional callable that returns True if job should be cancelled
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
-    question: The general question the card template was designed to explore
     """
     global GEMINI_MODEL
     
@@ -606,7 +728,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if text_size_ok(sections):
         report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
-        user = prompt_single_pass(schema, title, pdf_path.name, full_text, question=question)
+        user = prompt_single_pass(schema, title, pdf_path.name, full_text)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -631,7 +753,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question)
+        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
             
@@ -696,7 +818,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if not partials:
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
         clipped = " ".join("\n\n".join(t for _, t in sections).split()[:30000])
-        user = prompt_single_pass(schema, title, pdf_path.name, clipped, question=question)
+        user = prompt_single_pass(schema, title, pdf_path.name, clipped)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -717,11 +839,10 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
-                                  progress_callback=progress_callback, global_progress=None,
-                                  question=question)
+                                  progress_callback=progress_callback, global_progress=None)
     else:
         # Single-pass reduction for shorter documents
-        user = prompt_reduce(schema, title, pdf_path.name, partials, question=question)
+        user = prompt_reduce(schema, title, pdf_path.name, partials)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # Restore original model
@@ -892,7 +1013,7 @@ def run_gemini_cards(
 
     for pdf in pdfs:
         try:
-            card = build_card_for_pdf(pdf, schema, question=template_question or "")
+            card = build_card_for_pdf(pdf, schema)
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
@@ -1021,13 +1142,7 @@ def run_gemini_cards_with_progress(
     schema_stem = schema_name.replace('.json', '')  # Default stem from name
     if schema_data:
         # Use provided schema data directly (from database)
-        # Extract nested schema and question if present
-        if "schema" in schema_data:
-            schema = schema_data["schema"]
-            if not template_question:
-                template_question = schema_data.get("question", "")
-        else:
-            schema = schema_data
+        schema = schema_data
         print(f"[CONFIG] Using schema from database: {schema_name}")
     else:
         # Load from file
@@ -1035,17 +1150,8 @@ def run_gemini_cards_with_progress(
         schema_path = CARDS_DIR / schema_file
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema not found: {schema_path}")
-        full_schema_data = load_schema(schema_path)
-        # Extract nested schema and question if present
-        if "schema" in full_schema_data:
-            schema = full_schema_data["schema"]
-            if not template_question:
-                template_question = full_schema_data.get("question", "")
-        else:
-            schema = full_schema_data
+        schema = load_schema(schema_path)
         schema_stem = schema_path.stem
-    
-    print(f"[CONFIG] Template question: {template_question[:100]}..." if template_question else "[CONFIG] No template question found")
 
     pdfs = sorted(papers_dir.glob("*.pdf"))
     if not pdfs:
@@ -1091,8 +1197,7 @@ def run_gemini_cards_with_progress(
                 global_progress=None,
                 cancellation_check=cancellation_check,
                 batch_size=batch_size,
-                model_reduction=model_reduce,
-                question=template_question or ""
+                model_reduction=model_reduce
             )
             cards.append(card)
         except Exception as e:
