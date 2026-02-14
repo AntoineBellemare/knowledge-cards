@@ -330,13 +330,19 @@ SYSTEM_CARD = (
     "- If paper doesn't DIRECTLY study/discuss a topic, leave that field empty\n"
     "- Don't stretch content to fit fields - empty is honest\n"
     "- Avoid repeating the same content across multiple fields\n\n"
-    "SEMANTIC MATCHING - IMPORTANT:\n"
-    "- Each field name indicates a TOPIC AREA - content should be conceptually related\n"
-    "- ALLOW: Legitimately related concepts (e.g., 'embodiment' includes bodily experience, sensorimotor, enaction)\n"
-    "- PREVENT: Unrelated content that doesn't connect to the field's topic at all\n"
-    "- Ask: Is this content genuinely ABOUT the topic this field represents?\n"
-    "- If content is about a completely different topic, leave the field empty\n"
-    "- When uncertain whether concepts relate, consider the intellectual tradition and context\n\n"
+    "SEMANTIC MATCHING - CRITICAL:\n"
+    "- Each field name describes a SPECIFIC PHENOMENON - only that phenomenon belongs there\n"
+    "- SAME phenomenon, different terminology → INCLUDE\n"
+    "- DIFFERENT phenomenon, same research area → EXCLUDE (leave field empty)\n"
+    "- Ask: Does the paper actually STUDY/MEASURE the phenomenon this field names?\n"
+    "- If the paper studies phenomenon A, do NOT put that content in a field named 'phenomenon_B'\n"
+    "- Being about 'information' or 'brains' doesn't make all concepts interchangeable\n\n"
+    "TEMPLATE-PAPER MISMATCH DETECTION:\n"
+    "- If the template question asks about phenomenon X but the paper studies phenomenon Y:\n"
+    "  * Give a LOW relevance score (1-4)\n"
+    "  * Leave fields about phenomenon X EMPTY\n"
+    "  * In coverage_notes, explicitly state the paper doesn't study X\n"
+    "- Do NOT force-fit unrelated findings into template fields\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
     "- 1-3 sentences each, ≤250 characters\n"
     "- STRICT LIMIT: 8-12 quotes MAXIMUM per card (only the most essential)\n"
@@ -393,18 +399,21 @@ QUESTION RELEVANCE (REQUIRED - add these top-level fields):
   * Specific methods, metrics, or frameworks relevant to the question
   * Important values, parameters, or results
   * What aspects of the question this paper illuminates vs. leaves unanswered
+  * EXPLICITLY STATE if the paper studies a DIFFERENT phenomenon than what the question asks about
 - "question_relevance_score": integer 1-10 rating:
-  * 9-10: Directly answers the question with core findings/methods
-  * 7-8: Substantially relevant, addresses major aspects
-  * 5-6: Moderately relevant, provides useful context or partial answers
-  * 3-4: Tangentially related, only touches on the question
-  * 1-2: Minimally relevant, mostly off-topic
+  * 9-10: Paper directly STUDIES THE PHENOMENON the question asks about
+  * 7-8: Substantially relevant, addresses major aspects of the question's phenomenon
+  * 5-6: Moderately relevant, provides useful context
+  * 3-4: Paper studies a RELATED BUT DIFFERENT phenomenon than the question asks about
+  * 1-2: Paper studies a COMPLETELY DIFFERENT phenomenon - minimal relevance
+  * NOTE: If question asks about phenomenon X but paper studies phenomenon Y, score should be 1-4 even if both are "information" topics
 
 COVERAGE HONESTY (REQUIRED - add this top-level field):
 - "coverage_notes": An object with these keys:
-  * "directly_addresses": list of template topics the paper DIRECTLY studies
+  * "directly_addresses": list of template topics the paper DIRECTLY studies/measures
   * "tangentially_mentions": list of topics mentioned but not deeply explored
   * "not_addressed": list of template topics the paper doesn't cover
+  * "phenomenon_mismatch": if paper studies a different phenomenon than the template asks about, state it here
 
 - JSON only.
 """
@@ -509,9 +518,10 @@ MERGE RULES:
 
 7. COVERAGE HONESTY (REQUIRED - add this top-level field):
    - "coverage_notes": An object with these keys:
-     * "directly_addresses": list of template topics the paper DIRECTLY studies/investigates
+     * "directly_addresses": list of template topics the paper DIRECTLY studies/measures
      * "tangentially_mentions": list of topics the paper mentions but doesn't deeply explore
      * "not_addressed": list of template topics the paper doesn't cover at all
+     * "phenomenon_mismatch": if paper studies a different phenomenon than the template asks about, state it here
    - If the paper doesn't directly address certain template fields, leave them EMPTY
    - Don't stretch findings to fit fields they don't match
 
@@ -521,12 +531,14 @@ MERGE RULES:
      * Specific methods, metrics, or frameworks relevant to the question  
      * Important values, parameters, or results
      * What aspects of the question this paper illuminates vs. leaves unanswered
+     * EXPLICITLY STATE if the paper studies a DIFFERENT phenomenon than what the question asks about
    - "question_relevance_score": integer 1-10:
-     * 9-10: Directly answers the question with core findings/methods
-     * 7-8: Substantially relevant, addresses major aspects
-     * 5-6: Moderately relevant, provides useful context or partial answers
-     * 3-4: Tangentially related, only touches on the question
-     * 1-2: Minimally relevant, mostly off-topic
+     * 9-10: Paper directly STUDIES THE PHENOMENON the question asks about
+     * 7-8: Substantially relevant, addresses major aspects of the question's phenomenon
+     * 5-6: Moderately relevant, provides useful context
+     * 3-4: Paper studies a RELATED BUT DIFFERENT phenomenon than the question asks about
+     * 1-2: Paper studies a COMPLETELY DIFFERENT phenomenon - minimal relevance
+     * NOTE: If question asks about X but paper studies Y, score 1-4 even if both are "information" topics
 
 Output: Valid JSON only.
 """
@@ -890,6 +902,8 @@ def compact_row(card: Dict[str, Any]) -> Dict[str, Any]:
         row["directly_addresses"] = ", ".join(directly[:5]) if directly else ""
         not_covered = coverage.get("not_addressed", [])
         row["not_addressed"] = ", ".join(not_covered[:5]) if not_covered else ""
+        mismatch = coverage.get("phenomenon_mismatch", "")
+        row["phenomenon_mismatch"] = (mismatch[:150] + "...") if len(mismatch) > 150 else mismatch
 
     # Also count any top-level lists
     for k, v in card.items():
