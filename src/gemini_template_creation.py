@@ -334,10 +334,15 @@ SYSTEM_CARD = (
 )
 
 
-def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str) -> str:
+def prompt_single_pass(schema: Dict[str, Any], title: str, filename: str, fulltext: str,
+                       question: Optional[str] = None) -> str:
+    question_block = ""
+    if question:
+        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question and each field's semantic meaning.\n"""
+    
     return f"""
 Fill the following JSON schema exactly (valid JSON only, no comments):
-
+{question_block}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -351,9 +356,11 @@ TEXT:
 
 RULES (VERY IMPORTANT):
 - Populate every field in the schema. If unknown, use "" or [].
+- SEMANTIC MATCHING: Each field name describes what content belongs there - don't put unrelated content in a field
 - Do NOT invent content.
 - findings: short bullet points with concrete outcomes.
 - methods: include type (e.g., behavioral/EEG/fMRI/corpus/comp.), data, N if visible, and measures.
+- ALWAYS include SPECIFIC VALUES: numbers, parameters, effect sizes - not generic descriptions
 - For ANY field whose name contains 'citation' or 'quote':
     * Use ONLY short, relevant excerpts from the body of the paper, not from the References section.
     * Each item should be 1–3 sentences (≤300 characters), e.g. a key claim or a sentence with an in-text citation.
@@ -365,10 +372,15 @@ RULES (VERY IMPORTANT):
 - JSON only.
 """
 
-def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str) -> str:
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, 
+                     question: Optional[str] = None) -> str:
+    question_block = ""
+    if question:
+        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nOnly populate fields with content DIRECTLY RELEVANT to this question.\nIf content doesn't relate to a field's semantic meaning, leave it empty.\n"""
+    
     return f"""
 Extract from this chunk into the JSON schema. Fill ONLY fields this chunk addresses; leave others "" or [].
-
+{question_block}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -381,7 +393,11 @@ CHUNK:
 
 EXTRACTION RULES:
 
-1. SCOPE: Extract ONLY content from THIS chunk.
+1. SEMANTIC MATCHING (CRITICAL):
+   - Each field name describes what content belongs there
+   - "methodological_recommendations" = actual recommendations for methods
+   - Do NOT put unrelated content in a field just because you extracted something
+   - If no content matches a field, leave it EMPTY
 
 2. PRECISION IS CRITICAL:
    - Extract KEY claims, definitions, methods, findings
@@ -401,10 +417,15 @@ EXTRACTION RULES:
 Output: Valid JSON only.
 """
 
-def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
+def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]],
+                  question: Optional[str] = None) -> str:
+    question_block = ""
+    if question:
+        question_block = f"""\nTEMPLATE PURPOSE:\nThis schema was designed to answer: \"{question}\"\nDuring merge, REMOVE any content that doesn't actually relate to each field's semantic meaning.\n"""
+    
     return f"""
 Merge these PARTIAL extractions into a single FINAL card.
-
+{question_block}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
@@ -415,28 +436,34 @@ PARTIALS:
 
 MERGE RULES:
 
-1. SMART DEDUPLICATION:
+1. SEMANTIC VALIDATION (CRITICAL):
+   - Review each field's content against its NAME/MEANING
+   - REMOVE items that don't actually match the field's semantic intent
+   - "temporal_scaling" should contain content about scaling across TIME, not random findings
+   - Better to leave a field empty than fill it with irrelevant content
+
+2. SMART DEDUPLICATION:
    - Merge items with SAME core meaning (even if phrased differently)
    - Items with genuinely different claims, qualifiers, or contexts → keep distinct
    - When uncertain, lean toward keeping both
 
-2. PRESERVE SPECIFICITY:
+3. PRESERVE SPECIFICITY:
    - ALWAYS keep specific values: numbers, parameters, effect sizes, sample sizes
    - Definitions: preserve exact wording
    - Findings: preserve conditions and qualifiers
    - NEVER reduce specific values to generic descriptions
 
-3. TARGET LIMITS (flexible):
+4. TARGET LIMITS (flexible):
    - List fields: aim for 8-12 substantive items
    - If partials have 20+ truly distinct items → synthesize minor ones, keep key ones
 
-4. QUOTES (aim for 10-15 total):
+5. QUOTES (aim for 10-15 total):
    - Select most important: definitional, core arguments, key findings
    - Diversity across sections (not all from one part)
    - CLEAN all quotes: strip chunk IDs, DOI text, copyright notices
    - Format: "quote" [Section]
 
-5. BALANCE:
+6. BALANCE:
    - Substantive detail > extreme brevity
    - But avoid redundancy and truly fragmentary items
 
@@ -444,7 +471,8 @@ Output: Valid JSON only.
 """
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
-                      batch_size: int = 4, progress_callback=None, global_progress: dict = None) -> Dict[str, Any]:
+                      batch_size: int = 4, progress_callback=None, global_progress: dict = None,
+                      question: Optional[str] = None) -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -478,7 +506,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     # If total is small enough (< 30KB) and few cards, reduce directly in one pass
     if len(partial_cards) <= batch_size and total_chars < 30000:
         report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
-        user = prompt_reduce(schema, title, filename, partial_cards)
+        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're too large, we still need to reduce them
@@ -486,7 +514,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     if len(partial_cards) == 2 and total_chars >= 30000:
         # Can't batch further, just try to reduce the 2 cards
         report_progress(f"{filename}: merging 2 large cards")
-        user = prompt_reduce(schema, title, filename, partial_cards)
+        user = prompt_reduce(schema, title, filename, partial_cards, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # If we have few cards but they're large, reduce batch size
@@ -508,7 +536,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     def process_batch(batch_info):
         batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
-        user = prompt_reduce(schema, title, filename, batch)
+        user = prompt_reduce(schema, title, filename, batch, question=question)
         return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     intermediate_cards = []
@@ -530,7 +558,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
-    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress)
+    return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress, question=question)
 
 # ------------------ Pipeline ------------------
 def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
@@ -540,7 +568,7 @@ def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
                        global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
-                       model_reduction: Optional[str] = None) -> Dict[str, Any]:
+                       model_reduction: Optional[str] = None, question: Optional[str] = None) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
     
@@ -549,6 +577,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     cancellation_check: Optional callable that returns True if job should be cancelled
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
+    question: Original question/purpose of the template for context-aware extraction
     """
     global GEMINI_MODEL
     
@@ -575,7 +604,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if text_size_ok(sections):
         report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
-        user = prompt_single_pass(schema, title, pdf_path.name, full_text)
+        user = prompt_single_pass(schema, title, pdf_path.name, full_text, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -600,7 +629,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"])
+        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question)
         try:
             part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
             
@@ -665,7 +694,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     if not partials:
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
         clipped = " ".join("\n\n".join(t for _, t in sections).split()[:30000])
-        user = prompt_single_pass(schema, title, pdf_path.name, clipped)
+        user = prompt_single_pass(schema, title, pdf_path.name, clipped, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
@@ -686,10 +715,10 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
-                                  progress_callback=progress_callback, global_progress=None)
+                                  progress_callback=progress_callback, global_progress=None, question=question)
     else:
         # Single-pass reduction for shorter documents
-        user = prompt_reduce(schema, title, pdf_path.name, partials)
+        user = prompt_reduce(schema, title, pdf_path.name, partials, question=question)
         data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
     
     # Restore original model
@@ -860,7 +889,7 @@ def run_gemini_cards(
 
     for pdf in pdfs:
         try:
-            card = build_card_for_pdf(pdf, schema)
+            card = build_card_for_pdf(pdf, schema, question=template_question)
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
@@ -1044,7 +1073,8 @@ def run_gemini_cards_with_progress(
                 global_progress=None,
                 cancellation_check=cancellation_check,
                 batch_size=batch_size,
-                model_reduction=model_reduce
+                model_reduction=model_reduce,
+                question=template_question
             )
             cards.append(card)
         except Exception as e:
