@@ -310,14 +310,20 @@ def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> D
 
 
 SYSTEM_CARD = (
-    "You are a meticulous research assistant. You extract **only** what is present in the text. "
-    "Return strictly valid JSON matching the schema provided. Do not add fields.\n"
-    "- NEVER copy the full references / bibliography section into any field.\n"
-    "- For any field whose name includes 'citation' or 'quote', store only SHORT, RELEVANT excerpts "
-    "(1–3 sentences, ≤300 characters), not entire reference entries.\n"
-    "- Ignore any plain reference listings when filling quote/citation fields (e.g., lines that are just "
-    "author/year/journal/DOI).\n"
-    "- Be concise, factual, and add tiny location hints like [Intro], [Methods], [Results] when obvious.\n"
+    "You are a precise textual extractor. Extract EXACTLY what the text states.\n"
+    "Return strictly valid JSON matching the schema provided. Do not add fields.\n\n"
+    "QUALITY PRINCIPLES:\n"
+    "- PRESERVE qualifiers, conditions, and hedges (e.g., 'perhaps', 'in certain contexts', 'arguably')\n"
+    "- DISTINGUISH between: claims the author makes vs. positions they cite/critique vs. speculation\n"
+    "- For CONCEPTUAL texts: capture definitions, distinctions, and argumentative moves\n"
+    "- For EMPIRICAL texts: capture methods, findings, effect directions, and sample details\n"
+    "- For ESSAYS/THEORY: capture thesis, key arguments, conceptual innovations, and conclusions\n"
+    "- NOTE internal tensions or qualifications the author acknowledges\n"
+    "- Add location hints like [Intro], [Conceptual Framework], [Analysis], [Conclusion] when obvious\n\n"
+    "FOR 'citation' OR 'quote' FIELDS:\n"
+    "- Select passages that are: definitional, argumentatively crucial, or distinctively phrased\n"
+    "- 1-3 sentences each, ≤300 characters\n"
+    "- NEVER copy bibliography/reference entries\n"
 )
 
 
@@ -354,61 +360,92 @@ RULES (VERY IMPORTANT):
 
 def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str) -> str:
     return f"""
-You will fill the same JSON schema **partially** from this chunk **only**. If a field isn't covered here, leave it "" or [].
+Extract from this chunk into the JSON schema. Fill ONLY fields this chunk addresses; leave others "" or [].
 
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
-PAPER:
-- approx_title: "{title}"
-- file: {filename}
-- chunk_section: {section}
+TEXT: "{title}" ({filename})
+SECTION: {section}
 
 CHUNK:
 \"\"\"{chunk_text}\"\"\"
 
 
-RULES (VERY IMPORTANT):
-- Extract ONLY from this chunk.
-- Do NOT invent content.
-- For any field whose name contains 'citation' or 'quote':
-    * Extract quotes that are insightful, contain key claims, or have vivid phrasing.
-    * Max 3-4 quotes per chunk, each ≤250 characters.
-    * Add location hint: [chunk: {section}].
-    * Do NOT copy reference lists or bibliographic entries.
-- For list fields: extract relevant items from this chunk.
-- Ignore pure reference entries (author/year/journal/DOI).
-- JSON only.
+EXTRACTION RULES:
+
+1. SCOPE: Extract only from THIS chunk, but recognize when text refers to content elsewhere
+   - If text says "as noted above" or "see Section X", add [ref: earlier] but extract what IS here
+
+2. CONTENT VALUE - All sections matter equally:
+   - INTRODUCTIONS may contain thesis statements, key framings, conceptual distinctions
+   - THEORETICAL sections may contain definitions, arguments, thought experiments
+   - EMPIRICAL sections may contain methods, findings, effect sizes
+   - DISCUSSIONS/CONCLUSIONS may contain synthesis, implications, limitations
+   - Extract the INTELLECTUAL CONTENT regardless of section type
+
+3. PRECISION:
+   - Preserve qualifiers ("perhaps", "in some cases", "arguably")
+   - Distinguish claims the author makes vs. views they cite/critique
+   - Capture definitions and conceptual distinctions verbatim when possible
+
+4. QUOTES: Max 4 from this chunk, prioritizing:
+   - Definitional passages ("By X, I mean...")
+   - Core arguments or claims
+   - Distinctive phrasing that captures a key idea
+   - Format: "quote text" [chunk: {section}]
+   - NEVER copy bibliography entries
+
+Output: Valid JSON only.
 """
 
 def prompt_reduce(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]]) -> str:
     return f"""
-Merge these PARTIAL JSON cards into a single, concise FINAL card that still conforms to the SCHEMA exactly.
+Merge these PARTIAL extractions into a single FINAL card that captures the text's full intellectual content.
 
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 
-PAPER:
-- approx_title: "{title}"
-- file: {filename}
+TEXT: "{title}" ({filename})
 
 PARTIALS:
 {json.dumps(partial_cards, ensure_ascii=False, indent=2)}
 
-MERGE RULES (VERY IMPORTANT):
-- Union/merge lists; deduplicate similar items.
-- Prefer more specific/quantified info when conflicts.
-- Keep methods coherent (type, data, N if present, measures).
-- findings: Concise bullets (max 6) reflecting the paper's main results. Summarize related findings together.
-- For any field whose name contains 'citation' or 'quote':
-    * Keep the MOST impactful, non-redundant quotes (aim for 8-12 total for long papers).
-    * Merge or drop quotes that say essentially the same thing.
-    * Each quote should be ≤250 characters. Trim longer ones while preserving meaning.
-    * Drop generic statements, reference lines, or bibliographic text.
-    * Prioritize quotes with specific claims, data, or unique phrasing.
-- For list fields (except citations/quotes): max 6 items. Merge similar items.
-- If a field remains unknown overall, keep "" or [].
-- Return FINAL JSON only.
+MERGE RULES - QUALITY FOCUSED:
+
+1. CONSERVATIVE DEDUPLICATION:
+   - Only merge items that are TRULY identical in meaning AND scope
+   - Items that SEEM similar but differ in context, qualifier, or emphasis are DISTINCT - keep both
+   - Example: "X enables Y" and "X sometimes enables Y in context Z" are TWO items, not one
+   - When uncertain, KEEP BOTH rather than lose information
+
+2. PRESERVE INTELLECTUAL STRUCTURE:
+   - For conceptual/theoretical texts: keep the argumentative progression
+   - For empirical texts: keep methodological details and finding specifics
+   - For essays: preserve thesis development and key distinctions
+   - Content from introductions and conceptual sections is as valuable as conclusions
+
+3. HANDLE DIFFERENT CONTENT TYPES:
+   - Definitions and distinctions: preserve exact wording
+   - Arguments: keep logical structure (premise → claim)
+   - Findings/claims: preserve conditions and qualifiers
+   - Examples and illustrations: keep if they clarify key concepts
+
+4. QUOTES - QUALITY & DIVERSITY:
+   - Keep quotes that are: definitional, argumentatively crucial, or distinctively phrased
+   - Aim for diversity across the text (not all from one section)
+   - Only drop quotes that are genuinely redundant (same sentence, same point)
+   - Preserve location hints from partials
+
+5. TENSIONS & NUANCE:
+   - If partials reveal internal tensions, qualifications, or acknowledged limitations, PRESERVE them
+   - Do not smooth over complexity
+
+6. COMPLETENESS OVER BREVITY:
+   - This is the final card - err on the side of inclusion
+   - If a field has rich content across partials, preserve that richness
+
+Output: Valid JSON only.
 """
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
