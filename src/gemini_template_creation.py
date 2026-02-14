@@ -327,10 +327,10 @@ SYSTEM_CARD = (
     "- Synthesize truly redundant points, but keep distinct findings/claims separate\n\n"
     "FOR 'citation' OR 'quote' FIELDS:\n"
     "- 1-3 sentences each, ≤250 characters\n"
-    "- Aim for 10-15 quotes per card (definitional, argumentatively crucial, key findings)\n"
+    "- STRICT LIMIT: 8-12 quotes MAXIMUM per card (only the most essential)\n"
     "- Include quote text + brief location hint: 'quote text' [Section]\n"
     "- NEVER include chunk IDs, line numbers, DOI metadata, or copyright notices in quotes\n"
-    "- NEVER copy bibliography/reference entries\n"
+    "- NEVER copy bibliography/reference entries or methods citations\n"
 )
 
 
@@ -405,12 +405,12 @@ EXTRACTION RULES:
    - NEVER write generic placeholders like 'Range of X explored' - give ACTUAL values
    - Example: 'tau=1-10ms, n=45 subjects, p<0.001' NOT 'Various parameters tested'
 
-3. QUOTES: Max 3-4 from this chunk:
-   - Definitional or argumentatively crucial passages
+3. QUOTES: Max 2 from this chunk (VERY selective):
+   - ONLY definitional statements or truly crucial findings
+   - Skip: methods details, statistics, figure captions, reference citations
    - Format: "quote text" [{section}]
    - MAX 250 characters each
    - CLEAN quotes: exclude chunk IDs, DOI, copyright text
-   - NEVER copy bibliography entries
 
 4. FOR LISTS: Include all relevant items from this chunk - will be merged later.
 
@@ -457,11 +457,12 @@ MERGE RULES:
    - List fields: aim for 8-12 substantive items
    - If partials have 20+ truly distinct items → synthesize minor ones, keep key ones
 
-5. QUOTES (aim for 10-15 total):
-   - Select most important: definitional, core arguments, key findings
-   - Diversity across sections (not all from one part)
+5. QUOTES - STRICT LIMIT (8-12 MAXIMUM, prefer fewer):
+   - AGGRESSIVELY FILTER: keep only essential quotes (definitions, pivotal findings)
+   - REMOVE: methods citations, statistical boilerplate, reference list entries, figure descriptions
+   - If partials have 30+ quotes → select ONLY the 8-10 most important
+   - Diversity across sections; no duplicates or near-duplicates
    - CLEAN all quotes: strip chunk IDs, DOI text, copyright notices
-   - Format: "quote" [Section]
 
 6. BALANCE:
    - Substantive detail > extreme brevity
