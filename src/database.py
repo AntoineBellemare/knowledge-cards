@@ -9,9 +9,13 @@ from sqlalchemy.orm import sessionmaker
 # Railway provides DATABASE_URL automatically when you link the Postgres service
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Railway uses "postgres://" but SQLAlchemy needs "postgresql://"
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Railway uses "postgres://" or "postgresql://". Pin the psycopg2 driver explicitly:
+# SQLAlchemy 2.1+ defaults bare "postgresql://" to psycopg (v3), which isn't installed.
+if DATABASE_URL:
+    for prefix in ("postgres://", "postgresql://"):
+        if DATABASE_URL.startswith(prefix):
+            DATABASE_URL = "postgresql+psycopg2://" + DATABASE_URL[len(prefix):]
+            break
 
 # For local development, use a fallback or raise an error
 if not DATABASE_URL:
