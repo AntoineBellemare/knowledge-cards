@@ -31,6 +31,14 @@ RESULTS_DIR = ROOT_DIR / "results"
 CARDS_DIR = Path("../cards")
 CARDS_DIR.mkdir(exist_ok=True)
 
+
+def safe_child(base: Path, name: str) -> Path:
+    """Resolve a user-supplied name as a direct child of base, rejecting path traversal."""
+    path = (base / name).resolve() if name else None
+    if path is None or path.parent != base.resolve():
+        raise HTTPException(status_code=400, detail=f"Invalid name: {name!r}")
+    return path
+
 # ---------- Background Job System ----------
 # Job store with disk persistence for long-running tasks
 JOBS_DIR = ROOT_DIR / ".jobs"  # Hidden directory for job persistence
@@ -489,7 +497,7 @@ async def serve_frontend():
 @app.post("/save_template")
 def save_template(req: SaveTemplateRequest):
     filename = f"{req.name}.json"
-    path = CARDS_DIR / filename
+    path = safe_child(CARDS_DIR, filename)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(req.model_dump(), f, indent=2, ensure_ascii=False)
@@ -579,7 +587,7 @@ def save_schema(req: SaveSchemaRequest) -> SaveSchemaResponse:
     if not name.endswith(".json"):
         name = name + ".json"
 
-    path = CARDS_DIR / name
+    path = safe_child(CARDS_DIR, name)
     try:
         with path.open("w", encoding="utf-8") as f:
             json.dump(req.schema, f, ensure_ascii=False, indent=2)
@@ -614,6 +622,10 @@ async def run_gemini_stream(
     Use either schema_name (file-based) or template_id (database-based).
     If user_id is provided, saves the collection to the database.
     """
+    safe_child(PAPERS_DIR, papers_subdir)
+    if schema_name:
+        safe_child(CARDS_DIR, schema_name)
+
     # If template_id is provided, fetch schema from database
     schema_data = None
     template_name = schema_name
@@ -780,6 +792,10 @@ def start_build_job(
         batch_size: Number of cards to reduce per batch (default 4)
         user_id: User ID for database storage
     """
+    safe_child(PAPERS_DIR, papers_subdir)
+    if schema_name:
+        safe_child(CARDS_DIR, schema_name)
+
     # Cleanup old jobs periodically
     cleanup_old_jobs()
     
@@ -973,6 +989,8 @@ def manual_cleanup_jobs():
 def run_gemini(req: RunGeminiRequest) -> RunGeminiResponse:
     """Legacy non-streaming endpoint (kept for compatibility)."""
     from gemini_template_creation import run_gemini_cards
+    safe_child(PAPERS_DIR, req.papers_subdir)
+    safe_child(CARDS_DIR, req.schema_name)
     try:
         jsonl_path, csv_path, pdf_path = run_gemini_cards(
             schema_name=req.schema_name,
@@ -1030,14 +1048,15 @@ def list_results():
 @app.post("/upload_papers/{folder_name}")
 async def upload_papers(folder_name: str, files: List[UploadFile] = File(...)):
     """Upload PDF papers to a specific folder."""
-    folder_path = PAPERS_DIR / folder_name
+    PAPERS_DIR.mkdir(parents=True, exist_ok=True)
+    folder_path = safe_child(PAPERS_DIR, folder_name)
     folder_path.mkdir(parents=True, exist_ok=True)
-    
+
     uploaded = []
     for file in files:
         if not file.filename.lower().endswith(".pdf"):
             continue
-        dest = folder_path / file.filename
+        dest = safe_child(folder_path, file.filename)
         with dest.open("wb") as f:
             content = await file.read()
             f.write(content)
@@ -1053,9 +1072,9 @@ async def download_file(file_type: str, filename: str):
         raise HTTPException(status_code=400, detail="Invalid file type")
     
     if file_type == "results":
-        file_path = RESULTS_DIR / filename
+        file_path = safe_child(RESULTS_DIR, filename)
     else:
-        file_path = CARDS_DIR / filename
+        file_path = safe_child(CARDS_DIR, filename)
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -1075,7 +1094,7 @@ async def download_file(file_type: str, filename: str):
 @app.delete("/papers/{folder_name}")
 async def delete_papers_folder(folder_name: str):
     """Delete a papers folder."""
-    folder_path = PAPERS_DIR / folder_name
+    folder_path = safe_child(PAPERS_DIR, folder_name)
     if not folder_path.exists():
         raise HTTPException(status_code=404, detail="Folder not found")
     
