@@ -31,11 +31,10 @@ import numpy as np
 from tqdm import tqdm
 from dotenv import load_dotenv
 
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted, GoogleAPIError, DeadlineExceeded
-
 from cards_to_pdf import build_pdf  # <- use the build_pdf you showed
 from generate_meta_card_UI import load_schemas_from_file, generate_meta_card, generate_speculation
+from claude_client import PromptTooLongError
+from llm import ApiKeys, call_llm_json, env_api_keys
 
 # Thread-local storage for cancellation check
 _thread_locals = threading.local()
@@ -65,10 +64,23 @@ RESULTS_DIR = ROOT_DIR / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model + context settings
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")   # change if you like
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")   # default only; jobs pass their model explicitly
 MAX_INPUT_TOKENS = 2000    # single-pass only for very short papers
 CHUNK_TOK_TARGET = 1000    # ~1k words per chunk for focused extraction
 CHUNK_OVERLAP = 200        # 20% overlap to maintain context
+
+# Cost modes: how papers are split into model calls. Bigger chunks mean fewer calls (the
+# template is re-sent with every call), "sparse" partial cards hold only the fields a chunk
+# fills (output tokens are the expensive part), and Flex runs Gemini at half price, slower.
+EXTRACTION_MODES: Dict[str, Dict[str, Any]] = {
+    "detailed": {"chunk_words": CHUNK_TOK_TARGET, "overlap": CHUNK_OVERLAP, "pack_sections": False,
+                 "single_pass_words": MAX_INPUT_TOKENS, "sparse_partials": False, "flex": False},
+    "balanced": {"chunk_words": 4000, "overlap": 300, "pack_sections": True,
+                 "single_pass_words": 8000, "sparse_partials": True, "flex": False},
+    "economy": {"chunk_words": 12000, "overlap": 500, "pack_sections": True,
+                "single_pass_words": 20000, "sparse_partials": True, "flex": True},
+}
+DEFAULT_MODE = "detailed"
 
 
 # Section heading heuristics (expand as needed)
@@ -89,6 +101,14 @@ def load_schema(path: Path) -> Dict[str, Any]:
     """Load the card schema dictionary you want the model to fill."""
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+def load_template_file(path: Path) -> Tuple[Dict[str, Any], str]:
+    """(schema, question) from a cards/*.json file, either a {name, question, schema}
+    template or a bare schema."""
+    data = load_schema(path)
+    if isinstance(data.get("schema"), dict):
+        return data["schema"], data.get("question") or ""
+    return data, ""
 
 def save_jsonl(rows: List[Dict[str, Any]], path: Path):
     with path.open("w", encoding="utf-8") as f:
@@ -230,10 +250,15 @@ def chunk_section(text: str, target_words=CHUNK_TOK_TARGET, overlap=CHUNK_OVERLA
         i = max(0, j - overlap)
     return chunks
 
-def build_chunks(sections: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
+def build_chunks(sections: List[Tuple[str, str]], target_words: int = CHUNK_TOK_TARGET,
+                 overlap: int = CHUNK_OVERLAP, pack: bool = False) -> List[Dict[str, Any]]:
+    """Split sections into chunks of ~target_words. With pack=True, consecutive short
+    sections share a chunk (fewer calls); otherwise every section starts a new chunk."""
+    if pack:
+        return _pack_sections(sections, target_words, overlap)
     chunks = []
     for sec_name, sec_txt in sections:
-        for i, ch in enumerate(chunk_section(sec_txt)):
+        for i, ch in enumerate(chunk_section(sec_txt, target_words, overlap)):
             chunks.append({
                 "section": sec_name if i == 0 else f"{sec_name} (cont.)",
                 "text": ch
@@ -241,72 +266,41 @@ def build_chunks(sections: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
     return chunks
 
 # ------------------ Gemini calls ------------------
-def init_gemini():
-    load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY not set (env or .env).")
-    genai.configure(api_key=api_key)
+def _pack_sections(sections: List[Tuple[str, str]], target_words: int, overlap: int) -> List[Dict[str, Any]]:
+    chunks: List[Dict[str, Any]] = []
+    parts: List[str] = []
+    names: List[str] = []
+    words_in_buf = 0
 
-def call_gemini_json(model: str, system_msg: str, user_msg: str, retries=3) -> Dict[str, Any]:
-    # Check for cancellation before making API call
+    def flush():
+        nonlocal parts, names, words_in_buf
+        if parts:
+            label = names[0] if len(names) == 1 else f"{names[0]} … {names[-1]}"
+            chunks.append({"section": label, "text": "\n\n".join(parts)})
+        parts, names, words_in_buf = [], [], 0
+
+    for sec_name, sec_txt in sections:
+        words = len(sec_txt.split())
+        if words > target_words:  # a long section is split on its own
+            flush()
+            for i, ch in enumerate(chunk_section(sec_txt, target_words, overlap)):
+                chunks.append({"section": sec_name if i == 0 else f"{sec_name} (cont.)", "text": ch})
+            continue
+        if words_in_buf + words > target_words:
+            flush()
+        parts.append(f"[{sec_name}]\n{sec_txt}")
+        names.append(sec_name)
+        words_in_buf += words
+    flush()
+    return chunks
+
+def call_model_json(model: str, system_msg: str, user_msg: str, api_keys: ApiKeys = None,
+                    flex: bool = False) -> Dict[str, Any]:
+    """Call the model (Gemini or Claude) with the user's API keys, unless the job was cancelled."""
     check_func = get_cancellation_check()
     if check_func and check_func():
         raise RuntimeError("Job cancelled by user")
-    
-    m = genai.GenerativeModel(
-        model,
-        system_instruction=system_msg,
-        generation_config={"response_mime_type": "application/json"}
-    )
-    last_err = None
-    for t in range(retries):
-        # Check cancellation before each retry
-        if check_func and check_func():
-            raise RuntimeError("Job cancelled by user")
-        
-        try:
-            # print(f"[Gemini] Call attempt {t+1}/{retries} with model={model}...")
-            print(f"[Gemini] Prompt length: {len(user_msg.split())} words, {len(user_msg)} chars")
-            resp = m.generate_content(user_msg)
-            # print("[Gemini] Call succeeded.")
-            raw_text = resp.text.strip()
-            # Clean up common JSON formatting issues
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-            return json.loads(raw_text.strip())
-        except json.JSONDecodeError as e:
-            last_err = e
-            print(f"[Gemini] JSON decode error on attempt {t+1}: {e}")
-            if t < retries - 1:
-                print(f"[Gemini] Response preview: {resp.text[:500]}...")
-                time.sleep(1.0 * (t + 1))
-            else:
-                print(f"[Gemini] Full malformed response saved for debugging")
-                # Save the malformed response for debugging
-                try:
-                    with open(f"debug_malformed_{int(time.time())}.txt", "w", encoding="utf-8") as f:
-                        f.write(resp.text)
-                except:
-                    pass
-        except (ResourceExhausted, DeadlineExceeded) as e:
-            last_err = e
-            print(f"[Gemini] Resource/Deadline error on attempt {t+1}: {e}")
-            time.sleep(2.0 * (t + 1))
-        except GoogleAPIError as e:
-            last_err = e
-            print(f"[Gemini] API error on attempt {t+1}: {e}")
-            time.sleep(1.0 * (t + 1))
-        except Exception as e:
-            last_err = e
-            print(f"[Gemini] Unknown error on attempt {t+1}: {e}")
-            break
-    print("[Gemini] All retries failed, raising last error.")
-    raise last_err
+    return call_llm_json(model, system_msg, user_msg, api_keys=api_keys, flex=flex)
 
 
 def describe_schema_with_paths(schema: Dict[str, Any], parent_path: str = "") -> str:
@@ -411,7 +405,8 @@ Return valid JSON only.
 """
 
 
-def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, question: str = "") -> str:
+def prompt_map_chunk(schema: Dict[str, Any], title: str, filename: str, section: str, chunk_text: str, question: str = "",
+                     sparse: bool = False) -> str:
     question_context = ""
     if question:
         question_context = f"""
@@ -422,9 +417,14 @@ Prioritize content that illuminates this question. Look for theoretical claims, 
 """
     
     schema_paths = describe_schema_with_paths(schema)
-    
+    if sparse:
+        coverage_rule = ("Return ONLY the fields this chunk fills, nested under their parent sections as in the "
+                         "schema. Omit every field and section this chunk does not cover.")
+    else:
+        coverage_rule = 'Leave fields empty (""/[]) if not covered.'
+
     return f"""
-Extract PARTIAL content from this chunk into the JSON schema. Leave fields empty (""/[]) if not covered.
+Extract PARTIAL content from this chunk into the JSON schema. {coverage_rule}
 {question_context}
 SCHEMA:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
@@ -521,7 +521,8 @@ Return valid JSON only.
 
 def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial_cards: List[Dict[str, Any]], 
                       batch_size: int = 4, progress_callback=None, global_progress: dict = None,
-                      question: str = "") -> Dict[str, Any]:
+                      question: str = "", model: Optional[str] = None,
+                      api_keys: ApiKeys = None, flex: bool = False) -> Dict[str, Any]:
     """
     Hierarchically reduce partial cards in batches to avoid overwhelming the LLM.
     
@@ -533,6 +534,8 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     
     Uses smaller batch size (4) to keep prompts under ~50KB.
     """
+    model = model or GEMINI_MODEL
+
     def report_progress(message):
         if progress_callback and global_progress:
             global_progress['current'] += 1
@@ -556,7 +559,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     if len(partial_cards) <= batch_size and total_chars < 30000:
         report_progress(f"{filename}: final merge of {len(partial_cards)} cards")
         user = prompt_reduce(schema, title, filename, partial_cards, question=question)
-        return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        return call_model_json(model, SYSTEM_CARD, user, api_keys, flex)
     
     # If we have few cards but they're too large, we still need to reduce them
     # (2+ cards that are individually large)
@@ -564,7 +567,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
         # Can't batch further, just try to reduce the 2 cards
         report_progress(f"{filename}: merging 2 large cards")
         user = prompt_reduce(schema, title, filename, partial_cards, question=question)
-        return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        return call_model_json(model, SYSTEM_CARD, user, api_keys, flex)
     
     # If we have few cards but they're large, reduce batch size
     if len(partial_cards) <= batch_size:
@@ -586,7 +589,7 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
         batch_num, batch = batch_info
         report_progress(f"{filename}: reduce batch {batch_num}/{total_batches}")
         user = prompt_reduce(schema, title, filename, batch, question=question)
-        return call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        return call_model_json(model, SYSTEM_CARD, user, api_keys, flex)
     
     intermediate_cards = []
     with ThreadPoolExecutor(max_workers=min(4, total_batches)) as executor:
@@ -608,29 +611,39 @@ def reduce_in_batches(schema: Dict[str, Any], title: str, filename: str, partial
     print(f"[REDUCE] Batch processing complete. Reducing {len(intermediate_cards)} intermediate cards")
     # Recursively reduce the intermediate cards (in case there are many batches)
     return reduce_in_batches(schema, title, filename, intermediate_cards, batch_size, progress_callback, global_progress,
-                             question=question)
+                             question=question, model=model, api_keys=api_keys, flex=flex)
 
 # ------------------ Pipeline ------------------
-def text_size_ok(sections: List[Tuple[str, str]]) -> bool:
+def text_size_ok(sections: List[Tuple[str, str]], max_words: int = MAX_INPUT_TOKENS) -> bool:
     # crude: use words count as proxy for tokens
     words = sum(len(t.split()) for _, t in sections)
-    return words <= MAX_INPUT_TOKENS
+    return words <= max_words
 
 def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback=None, 
                        global_progress: dict = None, cancellation_check=None, batch_size: int = 4, 
-                       model_reduction: Optional[str] = None, question: str = "") -> Dict[str, Any]:
+                       model_reduction: Optional[str] = None, question: str = "",
+                       model: Optional[str] = None, api_keys: ApiKeys = None,
+                       mode: str = DEFAULT_MODE) -> Dict[str, Any]:
     """
     Build a card for a single PDF. Uses single-pass for small docs, map-reduce for large ones.
-    
+
     progress_callback(stage: str, current: int, total: int, message: str)
     global_progress: dict with 'current', 'total', 'pdf_name' for global tracking
     cancellation_check: Optional callable that returns True if job should be cancelled
     batch_size: Number of cards to reduce per batch (default 4)
     model_reduction: Model to use for reduction passes (if different from chunk model)
     question: Template question that guides extraction (optional)
+    model: Model for single-pass and chunk extraction (defaults to GEMINI_MODEL)
+    api_keys: Provider ("google"/"anthropic") -> the user's API key
+    mode: Cost mode, one of EXTRACTION_MODES (chunk size, sparse partial cards, Gemini Flex)
     """
-    global GEMINI_MODEL
-    
+    cfg = EXTRACTION_MODES[mode]
+    flex = cfg["flex"]
+    # Models are passed explicitly (never via a module global) so concurrent jobs can't
+    # switch each other's model mid-run.
+    chunk_model = model or GEMINI_MODEL
+    reduce_model = model_reduction or chunk_model
+
     def report_progress(message, current=None, total=None):
         # If current and total are provided (for chunk tracking), use them
         # Otherwise use global progress tracking
@@ -651,11 +664,11 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
     total_words = sum(len(t.split()) for _, t in sections)
     print(f"[PIPELINE] {pdf_path.name}: {total_words} words across {len(sections)} sections.")
 
-    if text_size_ok(sections):
+    if text_size_ok(sections, cfg["single_pass_words"]):
         report_progress(f"{pdf_path.name}: processing...")
         full_text = "\n\n".join(f"[{s}]\n{t}" for s, t in sections)
         user = prompt_single_pass(schema, title, pdf_path.name, full_text, question=question)
-        data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        data = call_model_json(chunk_model, SYSTEM_CARD, user, api_keys, flex)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
             data["citation"].setdefault("title", title)
@@ -664,7 +677,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         return data
 
     # map-reduce with parallel chunk processing
-    chunks = build_chunks(sections)
+    chunks = build_chunks(sections, cfg["chunk_words"], cfg["overlap"], cfg["pack_sections"])
     total_chunks = len(chunks)
     
     # Determine parallelism: use 3-5 concurrent workers for Gemini API
@@ -679,9 +692,10 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         if cancellation_check and cancellation_check():
             raise RuntimeError("Job cancelled by user")
         
-        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question)
+        user = prompt_map_chunk(schema, title, pdf_path.name, ch["section"], ch["text"], question=question,
+                                sparse=cfg["sparse_partials"])
         try:
-            part = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+            part = call_model_json(chunk_model, SYSTEM_CARD, user, api_keys, flex)
             
             # Check for cancellation after API call
             if cancellation_check and cancellation_check():
@@ -745,7 +759,7 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
         print(f"[PIPELINE] {pdf_path.name}: no partials, falling back to clipped single-pass.")
         clipped = " ".join("\n\n".join(t for _, t in sections).split()[:30000])
         user = prompt_single_pass(schema, title, pdf_path.name, clipped, question=question)
-        data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
+        data = call_model_json(chunk_model, SYSTEM_CARD, user, api_keys, flex)
         data["_file"] = pdf_path.name
         if "citation" in data and isinstance(data["citation"], dict):
             data["citation"].setdefault("title", title)
@@ -756,25 +770,26 @@ def build_card_for_pdf(pdf_path: Path, schema: Dict[str, Any], progress_callback
 
     report_progress(f"{pdf_path.name}: reducing {len(partials)} chunks into final card...")
     
-    # Switch to reduction model if specified
-    original_model = GEMINI_MODEL
-    if model_reduction:
-        GEMINI_MODEL = model_reduction
-        print(f"[PIPELINE] Switching to reduction model: {model_reduction}")
-    
+    if reduce_model != chunk_model:
+        print(f"[PIPELINE] Using reduction model: {reduce_model}")
+
     # For long documents (books), use hierarchical batch reduction
     if len(partials) > 15:
         data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
                                   progress_callback=progress_callback, global_progress=None,
-                                  question=question)
+                                  question=question, model=reduce_model, api_keys=api_keys, flex=flex)
     else:
         # Single-pass reduction for shorter documents
         user = prompt_reduce(schema, title, pdf_path.name, partials, question=question)
-        data = call_gemini_json(GEMINI_MODEL, SYSTEM_CARD, user)
-    
-    # Restore original model
-    GEMINI_MODEL = original_model
-    
+        try:
+            data = call_model_json(reduce_model, SYSTEM_CARD, user, api_keys, flex)
+        except PromptTooLongError as e:
+            # Too big for one call at the model's standard rate: merge in batches instead.
+            print(f"[PIPELINE] {e} Falling back to batched reduction.")
+            data = reduce_in_batches(schema, title, pdf_path.name, partials, batch_size,
+                                     progress_callback=progress_callback, global_progress=None,
+                                     question=question, model=reduce_model, api_keys=api_keys, flex=flex)
+
     data["_file"] = pdf_path.name
     if "citation" in data and isinstance(data["citation"], dict):
         data["citation"].setdefault("title", title)
@@ -884,6 +899,7 @@ def run_gemini_cards(
     papers_folder: str,
     model: Optional[str] = None,
     template_question: Optional[str] = None,
+    api_keys: ApiKeys = None,
 ) -> Tuple[Path, Path, Path]:
     """
     Run the Gemini cards pipeline over all PDFs in papers/<papers_folder>,
@@ -903,19 +919,13 @@ def run_gemini_cards(
     if not papers_dir.exists():
         raise FileNotFoundError(f"Papers folder not found: {papers_dir}")
 
-    # --- set model if provided ---
-    from gemini_cards import GEMINI_MODEL as _GEMINI_MODEL
-    if model:
-        # dirty but simple: overwrite global
-        import gemini_cards
-        gemini_cards.GEMINI_MODEL = model
+    model = model or GEMINI_MODEL
 
     print(f"[UI] Using schema: {schema_path}")
     print(f"[UI] Papers folder: {papers_dir}")
     print(f"[UI] Results dir:   {RESULTS_DIR}")
 
-    # --- initialise Gemini, load schema ---
-    init_gemini()
+    # --- load schema ---
     
     # Load full schema file to extract question if not provided
     with schema_path.open("r", encoding="utf-8") as f:
@@ -940,7 +950,8 @@ def run_gemini_cards(
 
     for pdf in pdfs:
         try:
-            card = build_card_for_pdf(pdf, schema, question=template_question or "")
+            card = build_card_for_pdf(pdf, schema, question=template_question or "", model=model,
+                                      api_keys=api_keys)
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
@@ -989,6 +1000,7 @@ def run_gemini_cards(
             model=model or GEMINI_MODEL,
             question=template_question,  # Pass question for speculative synthesis
             include_speculation=True,
+            api_keys=api_keys,
         )
 
         # 3) Save meta-card as a single JSON
@@ -1024,6 +1036,9 @@ def run_gemini_cards_with_progress(
     schema_data: Optional[Dict[str, Any]] = None,
     template_question: Optional[str] = None,
     cancellation_check=None,
+    api_keys: ApiKeys = None,
+    mode: str = DEFAULT_MODE,
+    failed_papers: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[Path, Path, Path]:
     """
     Same as run_gemini_cards but with progress callbacks for real-time updates.
@@ -1038,6 +1053,9 @@ def run_gemini_cards_with_progress(
         schema_data: Optional pre-loaded schema (from database)
         template_question: Original question that generated the template
         cancellation_check: Optional callable that returns True if job should be cancelled
+        api_keys: Provider ("google"/"anthropic") -> the user's API key
+        mode: Cost mode, one of EXTRACTION_MODES
+        failed_papers: Optional list that receives {"file", "error"} for each paper that failed
     """
     # Set cancellation check in thread-local storage so it's accessible everywhere
     set_cancellation_check(cancellation_check)
@@ -1052,18 +1070,18 @@ def run_gemini_cards_with_progress(
     if not papers_dir.exists():
         raise FileNotFoundError(f"Papers folder not found: {papers_dir}")
 
-    # --- set model if provided ---
-    global GEMINI_MODEL
-    model_chunks = model or "gemini-2.5-flash-lite"
-    model_reduce = model_reduction or model or "gemini-2.5-flash-lite"
-    
-    GEMINI_MODEL = model_chunks
+    # --- resolve models (passed explicitly; never stored in a module global) ---
+    model_chunks = model or GEMINI_MODEL
+    model_reduce = model_reduction or model_chunks
+
+    if mode not in EXTRACTION_MODES:
+        raise ValueError(f"Unknown cost mode {mode!r}")
+    print(f"[CONFIG] Cost mode: {mode}")
     print(f"[CONFIG] Chunk processing model: {model_chunks}")
     print(f"[CONFIG] Reduction model: {model_reduce}")
     print(f"[CONFIG] Batch size: {batch_size}")
 
-    report("init", 0, 100, "Initializing Gemini...")
-    init_gemini()
+    report("init", 0, 100, "Initializing...")
     
     # --- resolve schema ---
     schema_stem = schema_name.replace('.json', '')  # Default stem from name
@@ -1077,7 +1095,8 @@ def run_gemini_cards_with_progress(
         schema_path = CARDS_DIR / schema_file
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema not found: {schema_path}")
-        schema = load_schema(schema_path)
+        schema, file_question = load_template_file(schema_path)
+        template_question = template_question or file_question or None
         schema_stem = schema_path.stem
 
     pdfs = sorted(papers_dir.glob("*.pdf"))
@@ -1125,11 +1144,16 @@ def run_gemini_cards_with_progress(
                 cancellation_check=cancellation_check,
                 batch_size=batch_size,
                 model_reduction=model_reduce,
-                question=template_question or ""
+                question=template_question or "",
+                model=model_chunks,
+                api_keys=api_keys,
+                mode=mode
             )
             cards.append(card)
         except Exception as e:
             print(f"[WARN|card] {pdf.name}: {e}")
+            if failed_papers is not None:
+                failed_papers.append({"file": pdf.name, "error": str(e)})
             continue
 
         try:
@@ -1170,11 +1194,12 @@ def run_gemini_cards_with_progress(
         schemas_for_meta = load_schemas_from_file(jsonl_path)
         meta_card = generate_meta_card(
             schemas_for_meta,
-            model=model or GEMINI_MODEL,
+            model=model_chunks,
             question=template_question,
             include_speculation=True,
+            api_keys=api_keys,
         )
-        
+
         if template_question:
             meta_card["_template_question"] = template_question
 
@@ -1216,10 +1241,12 @@ def main():
     )
     args = ap.parse_args()
 
+    load_dotenv()
     run_gemini_cards(
         schema_name=args.schema,
         papers_folder=args.papers,
         model=args.model,
+        api_keys=env_api_keys(),  # CLI runs use the operator's own keys from .env
     )
 
 

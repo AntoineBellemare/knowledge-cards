@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-import google.generativeai as genai
-from google.api_core.exceptions import GoogleAPIError, ResourceExhausted, DeadlineExceeded
+
+from llm import call_llm_json, env_api_keys
 
 
 # ---------------- Gemini setup ----------------
@@ -111,36 +111,6 @@ SYSTEM_SCHEMA = (
 
 
 
-def init_gemini() -> None:
-    """Configure Gemini from GOOGLE_API_KEY (env or .env)."""
-    load_dotenv()
-    key = os.getenv("GOOGLE_API_KEY")
-    if not key:
-        raise RuntimeError("GOOGLE_API_KEY not set.")
-    genai.configure(api_key=key)
-
-
-def call_gemini(model: str, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-    """
-    Low-level wrapper around Gemini JSON output.
-    Retries a few times on transient errors.
-    """
-    m = genai.GenerativeModel(
-        model,  # model name must be positional
-        system_instruction=system_prompt,
-        generation_config={"response_mime_type": "application/json"},
-    )
-    last_err: Optional[Exception] = None
-    for a in range(3):
-        try:
-            resp = m.generate_content(user_prompt)
-            return json.loads(resp.text)
-        except (ResourceExhausted, DeadlineExceeded, GoogleAPIError, Exception) as e:
-            last_err = e
-            print(f"[WARN] Gemini attempt {a+1} failed: {e}")
-    raise last_err  # type: ignore[arg-type]
-
-
 def build_prompt(question: str, pointers: Optional[Dict[str, Any]] = None) -> str:
     """
     Build the user prompt from the question + optional pointers from the UI.
@@ -210,17 +180,17 @@ QUESTION:
 
 def generate_schema(
     question: str,
-    model: str = "gemini-2.5-flash-lite",
+    model: str = "gemini-3.5-flash-lite",
     pointers: Optional[Dict[str, Any]] = None,
     ensure_citations_field: bool = False,
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """
     High-level function to generate a schema dict from a question (+ optional pointers).
-    Can be used by CLI *and* FastAPI.
+    Can be used by CLI *and* FastAPI. api_keys maps provider ("google"/"anthropic") to the user's key.
     """
-    init_gemini()
     prompt = build_prompt(question, pointers=pointers)
-    schema = call_gemini(model, SYSTEM_SCHEMA, prompt)
+    schema = call_llm_json(model, SYSTEM_SCHEMA, prompt, api_keys=api_keys)
 
     if ensure_citations_field:
         schema.setdefault("citations_or_quotes", [])
@@ -260,7 +230,8 @@ def refine_template(
     current_schema: dict,
     instruction: str,
     target_section: str = None,
-    model: str = "gemini-2.5-flash-lite"
+    model: str = "gemini-3.5-flash-lite",
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
 ) -> dict:
     """
     Refine an existing template/schema based on natural language instruction.
@@ -276,13 +247,13 @@ def refine_template(
             - "Simplify - fewer nested levels, more flat structure"
         target_section: Optional - focus changes on a specific section path (e.g., "methods_and_metrics")
                        If None, allows changes to the entire schema
-        model: Gemini model to use
-    
+        model: Gemini or Claude model to use
+        api_keys: Provider ("google"/"anthropic") -> the user's API key
+
     Returns:
         Modified schema dict
     """
-    init_gemini()
-    
+
     # Build the prompt
     if target_section:
         # Extract the target section for focused editing
@@ -303,7 +274,7 @@ INSTRUCTION:
 Return the MODIFIED VERSION of the '{target_section}' section only (as a JSON object).
 The modified section will replace the current one in the full schema.
 """
-        result = call_gemini(model, SYSTEM_REFINE, prompt)
+        result = call_llm_json(model, SYSTEM_REFINE, prompt, api_keys=api_keys)
         # Insert the modified section back into the schema
         modified_schema = json.loads(json.dumps(current_schema))  # deep copy
         _set_nested_value(modified_schema, target_section, result)
@@ -319,7 +290,7 @@ INSTRUCTION:
 
 Return the COMPLETE MODIFIED SCHEMA as a JSON object.
 """
-        modified_schema = call_gemini(model, SYSTEM_REFINE, prompt)
+        modified_schema = call_llm_json(model, SYSTEM_REFINE, prompt, api_keys=api_keys)
     
     # Ensure required field is preserved
     modified_schema.setdefault("citations_or_quotes", [])
@@ -390,7 +361,7 @@ def preview_schema_diff(original: dict, modified: dict) -> str:
 def main():
     ap = argparse.ArgumentParser(description="Generate JSON schema template from question.")
     ap.add_argument("--question", required=True)
-    ap.add_argument("--model", default="gemini-2.5-flash-lite")
+    ap.add_argument("--model", default="gemini-3.5-flash-lite")
     ap.add_argument("--out", default="schema_from_question.json")
     args = ap.parse_args()
 
@@ -400,11 +371,13 @@ def main():
         out_path = Path("../cards") / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    load_dotenv()
     schema = generate_schema(
         question=args.question,
         model=args.model,
         pointers=None,              # CLI: you can later add flags and pass them here
-        ensure_citations_field=False
+        ensure_citations_field=False,
+        api_keys=env_api_keys(),    # CLI runs use the operator's own keys from .env
     )
 
     with out_path.open("w", encoding="utf-8") as f:

@@ -309,6 +309,15 @@
           </div>
         </div>
         <div class="flex items-center gap-3">
+          <!-- API keys -->
+          <button
+            id="apiKeysBadge"
+            onclick="openApiKeysModal()"
+            title="No API keys set"
+            class="px-3 py-1.5 text-[0.7rem] font-mono rounded-lg border border-slate-600 hover:border-accentCyan transition-all flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800">
+            <span id="apiKeysDot" class="text-amber-400">●</span>
+            <span class="text-slate-300">API keys</span>
+          </button>
           <!-- User Badge -->
           <button
             id="userBadge"
@@ -326,6 +335,41 @@
           </button>
         </div>
       </header>
+
+      <!-- API Keys Modal -->
+      <div id="apiKeysModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div class="glass-soft rounded-xl p-6 w-full max-w-md mx-4 shadow-neon">
+          <h3 class="text-lg font-semibold text-slate-100 mb-1">Your API keys</h3>
+          <p class="text-xs text-slate-400 mb-4">
+            Model calls run on your own keys and are billed to your accounts. Keys stay in this browser
+            and are sent only with your requests; the server does not store them.
+          </p>
+          <p id="apiKeysReason" class="hidden mb-3 text-xs text-yellow-400"></p>
+          <div class="space-y-4">
+            <div>
+              <label for="apiKeyGoogle" class="block text-xs font-mono text-slate-400 mb-1">Google AI key (Gemini models and image generation)</label>
+              <input id="apiKeyGoogle" type="password" autocomplete="off" spellcheck="false" placeholder="AIza..."
+                class="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm font-mono focus:border-accentCyan focus:outline-none" />
+              <p class="mt-1 text-xs text-slate-500">Get one at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-accentCyan hover:underline">aistudio.google.com</a></p>
+            </div>
+            <div>
+              <label for="apiKeyAnthropic" class="block text-xs font-mono text-slate-400 mb-1">Anthropic key (Claude models)</label>
+              <input id="apiKeyAnthropic" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."
+                class="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600 text-slate-200 text-sm font-mono focus:border-accentPurple focus:outline-none" />
+              <p class="mt-1 text-xs text-slate-500">Get one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener" class="text-accentPurple hover:underline">platform.claude.com</a></p>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-slate-400">
+              <input id="apiKeysRemember" type="checkbox" />
+              Remember on this device (otherwise kept until you close this tab)
+            </label>
+            <p id="apiKeysServerNote" class="hidden text-xs text-slate-500"></p>
+          </div>
+          <div class="mt-5 flex justify-end gap-2">
+            <button onclick="closeApiKeysModal()" class="px-4 py-2 rounded-lg text-xs text-slate-300 hover:text-white">Cancel</button>
+            <button onclick="saveApiKeysFromModal()" class="px-4 py-2 rounded-lg bg-accentPurple text-white text-xs font-semibold hover:brightness-110">Save keys</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Username Modal -->
       <div id="userModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -701,10 +745,13 @@
               <label class="text-xs text-slate-400">Model:</label>
               <select id="template-model"
                 class="bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentCyan">
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fast)</option>
-                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (best)</option>
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview (experimental)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (fast)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (balanced)</option>
+                <option value="gemini-4-argon">gemini-4-argon (best)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (legacy, cheapest)</option>
+                <option value="claude-haiku-5-5">claude-haiku-5-5 (Anthropic, fast)</option>
+                <option value="claude-sonnet-5-5">claude-sonnet-5-5 (Anthropic, balanced)</option>
+                <option value="claude-opus-5-5">claude-opus-5-5 (Anthropic, best)</option>
               </select>
             </div>
             <button id="btn-generate"
@@ -917,10 +964,13 @@
             </label>
             <select id="run-model-chunks"
                 class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fastest, cheapest)</option>
-                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (best quality)</option>
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview (experimental)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (fast, cheap)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (balanced)</option>
+                <option value="gemini-4-argon">gemini-4-argon (best quality)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (legacy, cheapest; older Google accounts only)</option>
+                <option value="claude-haiku-5-5">claude-haiku-5-5 (Anthropic, fast, cheap)</option>
+                <option value="claude-sonnet-5-5">claude-sonnet-5-5 (Anthropic, balanced)</option>
+                <option value="claude-opus-5-5">claude-opus-5-5 (Anthropic, best quality)</option>
             </select>
             </div>
 
@@ -930,10 +980,25 @@
             </label>
             <select id="run-model-reduction"
                 class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fastest, cheapest)</option>
-                <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (best quality)</option>
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview (experimental)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (fast, cheap)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (balanced)</option>
+                <option value="gemini-4-argon">gemini-4-argon (best quality)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (legacy, cheapest; older Google accounts only)</option>
+                <option value="claude-haiku-5-5">claude-haiku-5-5 (Anthropic, fast, cheap)</option>
+                <option value="claude-sonnet-5-5">claude-sonnet-5-5 (Anthropic, balanced)</option>
+                <option value="claude-opus-5-5">claude-opus-5-5 (Anthropic, best quality)</option>
+            </select>
+            </div>
+
+            <div>
+            <label class="block text-xs font-mono text-slate-400 mb-1">
+                COST MODE
+            </label>
+            <select id="run-cost-mode"
+                class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-2 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-accentPurple focus:ring-1 focus:ring-accentPurple/30">
+                <option value="detailed" selected>Detailed: ~1k-word chunks, most granular extraction</option>
+                <option value="balanced">Balanced: ~4k-word chunks, compact partial cards</option>
+                <option value="economy">Economy: whole papers or ~12k-word chunks, Gemini at half price (slower)</option>
             </select>
             </div>
 
@@ -949,6 +1014,23 @@
                 <option value="8">8 (fastest, largest prompts)</option>
             </select>
             </div>
+        </div>
+
+        <!-- Cost estimate for the selected template, folder and models -->
+        <div id="cost-estimate" class="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs font-mono">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-slate-400">ESTIMATED COST</span>
+              <span id="cost-estimate-main" class="text-slate-100 text-sm">—</span>
+            </div>
+            <div id="cost-estimate-detail" class="mt-1 text-slate-500">Select a template and a papers folder to see an estimate.</div>
+            <div id="cost-estimate-modes" class="mt-2 grid grid-cols-3 gap-2"></div>
+            <details id="cost-estimate-compare" class="mt-2 hidden">
+              <summary class="cursor-pointer text-accentPurple hover:text-white">Compare models (same model for every step)</summary>
+              <table class="mt-2 w-full">
+                <tbody id="cost-estimate-table"></tbody>
+              </table>
+              <p id="cost-estimate-note" class="mt-2 text-slate-500"></p>
+            </details>
         </div>
 
         <div class="flex flex-col gap-4">
@@ -1036,13 +1118,10 @@
             </div>
           </div>
 
-          <!-- API Key Input -->
-          <div class="card-neutral rounded-xl p-5">
-            <label class="block text-xs font-mono text-slate-400 mb-2">Google AI API Key (for image generation)</label>
-            <input id="viz-api-key" type="password" 
-              class="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accentCyan focus:ring-1 focus:ring-accentCyan/30"
-              placeholder="Enter your Gemini API key..." />
-            <p class="text-xs text-slate-500 mt-2">Get a key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-accentCyan hover:underline">aistudio.google.com</a></p>
+          <!-- API key notice -->
+          <div class="card-neutral rounded-xl p-4 flex items-center justify-between gap-3">
+            <p class="text-xs text-slate-400">Image generation uses your Google AI key from <span class="font-mono text-slate-300">API keys</span>.</p>
+            <button onclick="openApiKeysModal()" class="px-3 py-1.5 rounded-lg border border-slate-600 hover:border-accentCyan text-xs font-mono text-slate-300">Manage keys</button>
           </div>
 
           <!-- Card Selection -->
@@ -1183,27 +1262,17 @@
             </h2>
             
             <div class="grid md:grid-cols-2 gap-3" id="viz-model-grid">
-              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-selected-cyan transition-all hover:scale-[1.02] shadow-md card-hover" data-value="gemini-2.5-flash-image">
-                <div class="font-medium text-sm text-slate-200">Gemini 2.5 Flash</div>
-                <p class="text-xs text-slate-500">Fast image generation</p>
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-selected-cyan transition-all hover:scale-[1.02] shadow-md card-hover" data-value="gemini-nano-banana-2.1">
+                <div class="font-medium text-sm text-slate-200">🍌 Nano Banana 2.1</div>
+                <p class="text-xs text-slate-500">Fast, up to 4K · recommended</p>
               </div>
-              
-              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="imagen-4.0-generate-001">
-                <div class="font-medium text-sm text-slate-200">Imagen 4</div>
-                <p class="text-xs text-slate-500">High-quality image generation</p>
-              </div>
-              
-              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="gemini-3-pro-image-preview">
-                <div class="font-medium text-sm text-slate-200">Gemini 3 Pro</div>
-                <p class="text-xs text-slate-500">Higher quality, slower</p>
-              </div>
-              
-              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="nano-banana-pro-preview">
-                <div class="font-medium text-sm text-slate-200">🍌 Nano Banana</div>
-                <p class="text-xs text-slate-500">Experimental model</p>
+
+              <div class="viz-model-option cursor-pointer p-3 rounded-lg viz-unselected transition-all hover:scale-[1.02] hover:bg-slate-700/50 shadow-md card-hover" data-value="gemini-3-pro-image">
+                <div class="font-medium text-sm text-slate-200">Nano Banana Pro</div>
+                <p class="text-xs text-slate-500">Highest quality, slower</p>
               </div>
             </div>
-            <input type="hidden" id="viz-model-value" value="gemini-2.5-flash-image" />
+            <input type="hidden" id="viz-model-value" value="gemini-nano-banana-2.1" />
           </div>
 
           <!-- Resolution Selection -->
@@ -1237,7 +1306,7 @@
             <div class="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
               <div class="flex justify-between items-center">
                 <span class="text-xs text-slate-400">Estimated cost per image:</span>
-                <span id="viz-cost-estimate" class="text-sm font-mono text-accentCyan">$0.039</span>
+                <span id="viz-cost-estimate" class="text-sm font-mono text-accentCyan">$0.034</span>
               </div>
             </div>
           </div>
@@ -1944,20 +2013,134 @@
       URL.revokeObjectURL(url);
     }
 
+    // ---------- User API keys (Gemini / Claude) ----------
+    // Every model call uses the user's own key, sent as a request header. Keys live in
+    // sessionStorage, or localStorage when the user ticks "remember".
+    const API_KEY_STORAGE = { google: "kc_google_api_key", anthropic: "kc_anthropic_api_key" };
+    const API_KEYS_REMEMBER = "kc_api_keys_remember";
+    const LEGACY_VIZ_KEY = "kc_viz_api_key";  // saved by the old image-generation key field
+    const PROVIDER_LABELS = { google: "Google AI (Gemini)", anthropic: "Anthropic (Claude)" };
+    let serverKeys = { google: false, anthropic: false };  // from /llm_config
+
+    function storageGet(store, key) {
+      try { return store.getItem(key); } catch { return null; }
+    }
+    function storageSet(store, key, value) {
+      try { value ? store.setItem(key, value) : store.removeItem(key); } catch {}
+    }
+
+    function getApiKeys() {
+      const keys = {};
+      for (const [provider, key] of Object.entries(API_KEY_STORAGE)) {
+        keys[provider] = storageGet(sessionStorage, key) || storageGet(localStorage, key) || "";
+      }
+      if (!keys.google) keys.google = storageGet(localStorage, LEGACY_VIZ_KEY) || "";
+      return keys;
+    }
+
+    function saveApiKeys(keys, remember) {
+      for (const [provider, key] of Object.entries(API_KEY_STORAGE)) {
+        const value = (keys[provider] || "").trim();
+        storageSet(sessionStorage, key, value);
+        storageSet(localStorage, key, remember ? value : "");
+      }
+      storageSet(localStorage, LEGACY_VIZ_KEY, "");
+      storageSet(localStorage, API_KEYS_REMEMBER, remember ? "1" : "");
+      updateApiKeysBadge();
+    }
+
+    function apiKeyHeaders() {
+      const keys = getApiKeys();
+      const headers = {};
+      if (keys.google) headers["X-Google-Api-Key"] = keys.google;
+      if (keys.anthropic) headers["X-Anthropic-Api-Key"] = keys.anthropic;
+      return headers;
+    }
+
+    function providerForModel(model) {
+      return (model || "").startsWith("claude-") ? "anthropic" : "google";
+    }
+
+    // True when every model has a key; otherwise explains why and opens the key dialog.
+    function ensureKeysFor(models, statusEl) {
+      const keys = getApiKeys();
+      const missing = [...new Set(models.filter(Boolean).map(providerForModel))]
+        .filter((p) => !keys[p] && !serverKeys[p]);
+      if (!missing.length) return true;
+      const msg = `Add your ${missing.map((p) => PROVIDER_LABELS[p]).join(" and ")} API key to use this model.`;
+      if (statusEl) statusEl.textContent = "⚠️ " + msg;
+      openApiKeysModal(msg);
+      return false;
+    }
+
+    function updateApiKeysBadge() {
+      const keys = getApiKeys();
+      const set = Object.keys(keys).filter((p) => keys[p]);
+      $("apiKeysDot").className = set.length ? "text-emerald-400" : "text-amber-400";
+      $("apiKeysBadge").title = set.length
+        ? "Keys set: " + set.map((p) => PROVIDER_LABELS[p]).join(", ")
+        : "No API keys set";
+    }
+
+    function openApiKeysModal(reason) {
+      const keys = getApiKeys();
+      $("apiKeyGoogle").value = keys.google;
+      $("apiKeyAnthropic").value = keys.anthropic;
+      $("apiKeysRemember").checked =
+        !!storageGet(localStorage, API_KEYS_REMEMBER) || !!storageGet(localStorage, LEGACY_VIZ_KEY);
+      $("apiKeysReason").textContent = reason || "";
+      $("apiKeysReason").classList.toggle("hidden", !reason);
+      const covered = Object.keys(serverKeys).filter((p) => serverKeys[p]);
+      $("apiKeysServerNote").textContent = covered.length
+        ? `This server also provides a ${covered.map((p) => PROVIDER_LABELS[p]).join(" and ")} key, so yours is optional there.`
+        : "";
+      $("apiKeysServerNote").classList.toggle("hidden", !covered.length);
+      const modal = $("apiKeysModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function closeApiKeysModal() {
+      const modal = $("apiKeysModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    function saveApiKeysFromModal() {
+      saveApiKeys(
+        { google: $("apiKeyGoogle").value, anthropic: $("apiKeyAnthropic").value },
+        $("apiKeysRemember").checked
+      );
+      closeApiKeysModal();
+    }
+
+    async function loadLlmConfig() {
+      try {
+        const res = await fetch(`${API_BASE}/llm_config`);
+        if (res.ok) serverKeys = (await res.json()).server_keys || serverKeys;
+      } catch (err) {
+        console.warn("Could not load /llm_config", err);
+      }
+    }
+
     // ---------- Backend helpers ----------
 
     async function apiGenerateSchemaFromQuestion(question, pointers, model) {
       console.log("[api] generate schema for question:", question, pointers, "model:", model);
+      if (!ensureKeysFor([model || "gemini-3.5-flash-lite"])) {
+        throw new Error("An API key is required. Add it under API keys.");
+      }
 
       const response = await fetch(`${API_BASE}/schema_from_question`, {
         method: "POST",
         mode: "cors",
         headers: {
+          ...apiKeyHeaders(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           question,
-          model: model || "gemini-2.5-flash-lite",
+          model: model || "gemini-3.5-flash-lite",
           pointers: {
             emphasize_conceptual: !!pointers.conceptual,
             include_empirical_methods: !!pointers.empirical,
@@ -1977,11 +2160,11 @@
       return data.schema; // schema object
     }
 
-    async function apiSaveSchema(name, schema) {
+    async function apiSaveSchema(name, schema, question = "") {
       const res = await fetch(`${API_BASE}/save_schema`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, schema }),
+        body: JSON.stringify({ name, schema, question }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -1992,14 +2175,17 @@
 
     async function apiRefineSchema(schema, instruction, targetSection = null, model = null) {
       console.log("[api] refine schema with instruction:", instruction.slice(0, 80) + "...");
+      if (!ensureKeysFor([model || "gemini-3.5-flash-lite"])) {
+        throw new Error("An API key is required. Add it under API keys.");
+      }
       const res = await fetch(`${API_BASE}/refine_schema`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...apiKeyHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           schema,
           instruction,
           target_section: targetSection || null,
-          model: model || "gemini-2.5-flash-lite"
+          model: model || "gemini-3.5-flash-lite"
         }),
       });
       if (!res.ok) {
@@ -2046,7 +2232,7 @@
     async function apiRunGemini(schemaName, papersSubdir) {
       const res = await fetch(`${API_BASE}/run_gemini`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...apiKeyHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           schema_name: schemaName,
           papers_subdir: papersSubdir,
@@ -2063,11 +2249,11 @@
     // Polling controller to allow cancellation from outside
     let activePollController = null;
     
-    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, modelChunks, onProgress, onJobStarted, modelReduction, batchSize) {
+    async function apiRunGeminiWithJobs(schemaValue, papersSubdir, modelChunks, onProgress, onJobStarted, modelReduction, batchSize, mode) {
       // schemaValue can be "db:123" for database templates or "schema_name" for file-based
-      const modelReductionParam = modelReduction || modelChunks || 'gemini-2.5-flash-lite';
+      const modelReductionParam = modelReduction || modelChunks || 'gemini-3.5-flash-lite';
       const batchSizeParam = batchSize || 4;
-      let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(modelChunks || 'gemini-2.5-flash-lite')}&model_reduction=${encodeURIComponent(modelReductionParam)}&batch_size=${batchSizeParam}`;
+      let url = `${API_BASE}/jobs/start?papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(modelChunks || 'gemini-3.5-flash-lite')}&model_reduction=${encodeURIComponent(modelReductionParam)}&batch_size=${batchSizeParam}&mode=${encodeURIComponent(mode || 'detailed')}`;
       const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
       
       if (schemaValue.startsWith('db:')) {
@@ -2077,8 +2263,8 @@
         url += `&schema_name=${encodeURIComponent(schemaValue)}${userParam}`;
       }
       
-      // Start the job
-      const startRes = await fetch(url, { method: 'POST' });
+      // Start the job (the user's API keys travel as headers, never in the URL)
+      const startRes = await fetch(url, { method: 'POST', headers: apiKeyHeaders() });
       if (!startRes.ok) {
         const err = await startRes.json();
         throw new Error(err.detail || `Server error: ${startRes.status}`);
@@ -2139,6 +2325,9 @@
               jsonl: status.result.jsonl,
               csv: status.result.csv,
               pdf: status.result.pdf,
+              meta_pdf: status.result.meta_pdf,
+              meta_json: status.result.meta_json,
+              failed_papers: status.result.failed_papers || [],
               collection_id: status.result.collection_id,
             };
           }
@@ -2164,7 +2353,7 @@
     async function apiRunGeminiWithProgress(schemaValue, papersSubdir, model, onProgress) {
       // schemaValue can be "db:123" for database templates or "schema_name" for file-based
       let url;
-      const baseParams = `papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-2.5-flash-lite')}`;
+      const baseParams = `papers_subdir=${encodeURIComponent(papersSubdir)}&model=${encodeURIComponent(model || 'gemini-3.5-flash-lite')}`;
       const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : '';
       
       if (schemaValue.startsWith('db:')) {
@@ -2177,6 +2366,7 @@
       const response = await fetch(url, {
         method: 'GET',
         headers: {
+          ...apiKeyHeaders(),
           'Accept': 'text/event-stream',
         },
       });
@@ -2284,7 +2474,7 @@
         ethics: $("opt-ethics").checked,
       };
       
-      const model = $("template-model").value || "gemini-2.5-flash-lite";
+      const model = $("template-model").value || "gemini-3.5-flash-lite";
 
       try {
         const schema = await apiGenerateSchemaFromQuestion(q, options, model);
@@ -2816,7 +3006,7 @@
       currentTemplate = updated;
 
       try {
-        const resp = await apiSaveSchema(name, schemaJSON);
+        const resp = await apiSaveSchema(name, schemaJSON, currentTemplate.question || "");
         console.log("Schema saved as", resp.filename);
         alert(`Template saved and written to cards/${resp.filename}`);
       } catch (err) {
@@ -3499,6 +3689,27 @@
           schemaSelect.appendChild(communityGroup);
         }
 
+        // Running locally: also offer templates saved as files in cards/ (where saves
+        // go when there is no database). Online, those files are shared, so skip them.
+        if (isLocal) {
+          try {
+            const { schemas = [] } = await apiListSchemas();
+            if (schemas.length > 0) {
+              const fileGroup = document.createElement("optgroup");
+              fileGroup.label = "💾 Saved in cards/ (local)";
+              schemas.forEach((filename) => {
+                const opt = document.createElement("option");
+                opt.value = filename;
+                opt.textContent = filename.replace(/\.json$/, "");
+                fileGroup.appendChild(opt);
+              });
+              schemaSelect.appendChild(fileGroup);
+            }
+          } catch (e) {
+            console.warn("[RUNS] Failed to load local template files:", e);
+          }
+        }
+
         // Filter folders to only show current session's folders (online) or all (local)
         foldersRes.folders.forEach((folder) => {
           // In production, only show folders belonging to this session
@@ -3510,10 +3721,112 @@
           opt.textContent = isLocal ? folder : displayFolder(folder);
           folderSelect.appendChild(opt);
         });
+        scheduleCostEstimate();
       } catch (err) {
         console.error("Failed to refresh run options", err);
         $("run-status").textContent =
           "Error loading schemas/folders (see console).";
+      }
+    }
+
+    // ----- Cost estimate (before starting a job) -----
+    let costEstimateTimer = null;
+    let costEstimateSeq = 0;
+    const COST_MODE_LABELS = { detailed: "Detailed", balanced: "Balanced", economy: "Economy" };
+
+    function formatUsd(x) {
+      if (x < 0.01) return "<$0.01";
+      if (x < 10) return "$" + x.toFixed(2);
+      return "$" + Math.round(x);
+    }
+
+    function formatUsdRange(low, high) {
+      const lo = formatUsd(low), hi = formatUsd(high);
+      return lo === hi ? lo : `${lo} – ${hi}`;
+    }
+
+    function formatTokens(n) {
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      if (n >= 1e3) return Math.round(n / 1e3) + "k";
+      return String(n);
+    }
+
+    function scheduleCostEstimate() {
+      clearTimeout(costEstimateTimer);
+      costEstimateTimer = setTimeout(refreshCostEstimate, 300);
+    }
+
+    async function refreshCostEstimate() {
+      const schemaValue = $("run-schema").value;
+      const folder = $("run-folder").value;
+      const main = $("cost-estimate-main");
+      const detail = $("cost-estimate-detail");
+      const compare = $("cost-estimate-compare");
+      const seq = ++costEstimateSeq;
+
+      if (!schemaValue || !folder) {
+        main.textContent = "—";
+        detail.textContent = "Select a template and a papers folder to see an estimate.";
+        $("cost-estimate-modes").innerHTML = "";
+        compare.classList.add("hidden");
+        return;
+      }
+
+      const body = {
+        papers_subdir: folder,
+        model: $("run-model-chunks").value,
+        model_reduction: $("run-model-reduction").value,
+        batch_size: parseInt($("run-batch-size").value) || 4,
+        mode: $("run-cost-mode").value,
+      };
+      if (schemaValue.startsWith("db:")) body.template_id = parseInt(schemaValue.substring(3));
+      else body.schema_name = schemaValue;
+
+      main.textContent = "…";
+      detail.textContent = "Reading PDFs to estimate token counts…";
+      try {
+        const res = await fetch(`${API_BASE}/estimate_cost`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (seq !== costEstimateSeq) return;  // a newer selection superseded this request
+        if (!res.ok) throw new Error(data.detail || `Server error ${res.status}`);
+
+        const sel = data.selected;
+        main.textContent = formatUsdRange(sel.low, sel.high);
+        detail.textContent =
+          `${data.papers} paper${data.papers === 1 ? "" : "s"} · ${sel.calls} model calls · ` +
+          `~${formatTokens(sel.input_tokens)} input / ~${formatTokens(sel.output_tokens)} output tokens` +
+          (sel.price_change ? ` · list price rises on ${sel.price_change}` : "");
+
+        const rows = data.per_model.map((m) => {
+          const isSel = m.model === sel.model && sel.model === sel.model_reduction;
+          return `<tr data-model="${m.model}" class="cursor-pointer hover:bg-slate-800/60 ${isSel ? "text-accentCyan" : "text-slate-300"}">
+              <td class="py-0.5 pr-3">${m.model}${m.price_change
+                ? ` <span class="text-slate-500">(price rises ${m.price_change})</span>` : ""}</td>
+              <td class="py-0.5 text-right">${formatUsdRange(m.low, m.high)}</td>
+            </tr>`;
+        });
+        $("cost-estimate-table").innerHTML = rows.join("");
+        $("cost-estimate-modes").innerHTML = data.per_mode.map((m) => `
+            <button type="button" data-mode="${m.mode}"
+              class="rounded-md border px-2 py-1 text-left ${m.mode === data.mode
+                ? "border-accentCyan text-slate-100" : "border-slate-700 text-slate-400 hover:border-slate-500"}">
+              <div>${COST_MODE_LABELS[m.mode] || m.mode}</div>
+              <div class="text-slate-300">${formatUsdRange(m.low, m.high)}</div>
+              <div class="text-slate-500">${m.calls} calls</div>
+            </button>`).join("");
+        $("cost-estimate-note").textContent =
+          `${data.note} Prices as of ${data.prices_as_of}. Click a model to use it for every step.`;
+        compare.classList.remove("hidden");
+      } catch (err) {
+        if (seq !== costEstimateSeq) return;
+        main.textContent = "—";
+        detail.textContent = `No estimate: ${err.message}`;
+        $("cost-estimate-modes").innerHTML = "";
+        compare.classList.add("hidden");
       }
     }
 
@@ -3523,9 +3836,10 @@
     async function handleRunGemini() {
         const schemaName = $("run-schema").value;
         const folder = $("run-folder").value;
-        const modelChunks = $("run-model-chunks").value || "gemini-2.5-flash-lite";
-        const modelReduction = $("run-model-reduction").value || "gemini-2.5-flash-lite";
+        const modelChunks = $("run-model-chunks").value || "gemini-3.5-flash-lite";
+        const modelReduction = $("run-model-reduction").value || "gemini-3.5-flash-lite";
         const batchSize = parseInt($("run-batch-size").value) || 4;
+        const costMode = $("run-cost-mode").value || "detailed";
         const statusEl = $("run-status");
         const outEl = $("run-output");
         const btnText = $("btn-text");
@@ -3540,6 +3854,9 @@
 
         if (!schemaName || !folder) {
             statusEl.textContent = "⚠️ Select both a schema and a papers folder.";
+            return;
+        }
+        if (!ensureKeysFor([modelChunks, modelReduction], statusEl)) {
             return;
         }
 
@@ -3590,7 +3907,7 @@
                 if (currentRunId !== thisRunId) return;  // Stale run
                 currentJobId = jobId;
                 btnCancel.onclick = () => cancelJob(jobId);
-            }, modelReduction, batchSize);
+            }, modelReduction, batchSize, costMode);
             
             // Only update UI if this is still the active run
             if (currentRunId !== thisRunId) {
@@ -3609,33 +3926,39 @@
               }
             }, 1500);
 
-            statusEl.innerHTML = '<span class="text-green-400">✓ Cards built successfully!</span>';
+            const failed = res.failed_papers || [];
+            statusEl.innerHTML = failed.length
+              ? `<span class="text-yellow-400">⚠ Cards built, but ${failed.length} paper${failed.length === 1 ? "" : "s"} failed and ${failed.length === 1 ? "is" : "are"} missing from the results.</span>`
+              : '<span class="text-green-400">✓ Cards built successfully!</span>';
 
-            // Build download links
-            const jsonlName = res.jsonl.split('/').pop();
-            const csvName = res.csv.split('/').pop();
-            const pdfName = res.pdf.split('/').pop();
+            // Build download links (server paths may use / or \)
+            const fileName = (path) => (path || "").split(/[\\/]/).pop();
+            const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) =>
+              ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+            const resultLink = (label, path) => path ? `
+                <div class="flex items-center gap-2">
+                  <span class="text-slate-500">${label}:</span>
+                  <a href="${API_BASE}/download/results/${encodeURIComponent(fileName(path))}" target="_blank" class="text-accentPink hover:underline">${fileName(path)}</a>
+                </div>` : "";
+            const failedList = failed.length ? `
+              <div class="pt-2 border-t border-slate-700 space-y-1 text-yellow-400">
+                ${failed.map((f) => `<div>✗ ${escapeHtml(f.file)}: <span class="text-slate-400">${escapeHtml(f.error)}</span></div>`).join("")}
+              </div>` : "";
 
             outEl.innerHTML =
             `<div class="mt-3 p-4 rounded-lg bg-slate-900/50 border border-slate-700 space-y-2">
               <div><span class="text-slate-500">Schema:</span> <span class="text-accentCyan">${res.schema_name}</span></div>
               <div><span class="text-slate-500">Papers:</span> <span class="text-accentCyan">${res.papers_folder}</span></div>
               <div class="pt-2 border-t border-slate-700 space-y-1">
-                <div class="flex items-center gap-2">
-                  <span class="text-slate-500">📄 JSONL:</span>
-                  <a href="${API_BASE}/download/results/${encodeURIComponent(jsonlName)}" target="_blank" class="text-accentPink hover:underline">${jsonlName}</a>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-slate-500">📊 CSV:</span>
-                  <a href="${API_BASE}/download/results/${encodeURIComponent(csvName)}" target="_blank" class="text-accentPink hover:underline">${csvName}</a>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-slate-500">📑 PDF:</span>
-                  <a href="${API_BASE}/download/results/${encodeURIComponent(pdfName)}" target="_blank" class="text-accentPink hover:underline">${pdfName}</a>
-                </div>
+                ${resultLink("📄 JSONL", res.jsonl)}
+                ${resultLink("📊 CSV", res.csv)}
+                ${resultLink("📑 PDF", res.pdf)}
+                ${resultLink("🧩 Meta-card PDF", res.meta_pdf)}
+                ${resultLink("🧩 Meta-card JSON", res.meta_json)}
               </div>
+              ${failedList}
             </div>`;
-            
+
             // Auto-refresh collections list
             refreshCollectionsList();
         } catch (err) {
@@ -3705,20 +4028,8 @@
     window.addEventListener("DOMContentLoaded", async () => {
       await loadTemplatesFromBackend();
 
-      // Restore saved API key from localStorage (local only for security)
-      if (isLocal) {
-        const savedApiKey = localStorage.getItem('kc_viz_api_key');
-        if (savedApiKey) {
-          $("viz-api-key").value = savedApiKey;
-        }
-        // Save API key when changed
-        $("viz-api-key").addEventListener('change', (e) => {
-          localStorage.setItem('kc_viz_api_key', e.target.value);
-        });
-        $("viz-api-key").addEventListener('blur', (e) => {
-          localStorage.setItem('kc_viz_api_key', e.target.value);
-        });
-      }
+      updateApiKeysBadge();
+      loadLlmConfig();
 
       $("nav-welcome").onclick = () => setView("welcome");
       $("nav-question").onclick = () => setView("question");
@@ -3776,6 +4087,22 @@
 
       $("btn-run-gemini").onclick = handleRunGemini;
       $("btn-refresh-folders").onclick = refreshRunOptions;
+      ["run-schema", "run-folder", "run-model-chunks", "run-model-reduction", "run-batch-size", "run-cost-mode"].forEach((id) =>
+        $(id).addEventListener("change", scheduleCostEstimate)
+      );
+      $("cost-estimate-modes").addEventListener("click", (e) => {
+        const chip = e.target.closest("button[data-mode]");
+        if (!chip) return;
+        $("run-cost-mode").value = chip.dataset.mode;
+        scheduleCostEstimate();
+      });
+      $("cost-estimate-table").addEventListener("click", (e) => {
+        const row = e.target.closest("tr[data-model]");
+        if (!row) return;
+        $("run-model-chunks").value = row.dataset.model;
+        $("run-model-reduction").value = row.dataset.model;
+        scheduleCostEstimate();
+      });
       $("btn-upload-papers").onclick = handleUploadPapers;
       $("btn-refresh-collections").onclick = refreshCollectionsList;
 
@@ -3909,13 +4236,11 @@
         
         // Pricing table
         const pricing = {
-          "gemini-2.5-flash-image": { "1K": 0.039, "2K": 0.039, "4K": 0.039 },
-          "gemini-3-pro-image-preview": { "1K": 0.134, "2K": 0.134, "4K": 0.24 },
-          "nano-banana-pro-preview": { "1K": 0.134, "2K": 0.134, "4K": 0.24 },
-          "imagen-4.0-generate-001": { "1K": 0.04, "2K": 0.04, "4K": 0.04 },
+          "gemini-nano-banana-2.1": { "1K": 0.0336, "2K": 0.0504, "4K": 0.113 },
+          "gemini-3-pro-image": { "1K": 0.134, "2K": 0.134, "4K": 0.24 },
         };
-        
-        const modelPricing = pricing[model] || pricing["gemini-2.5-flash-image"];
+
+        const modelPricing = pricing[model] || pricing["gemini-nano-banana-2.1"];
         let resKey = "1K";
         if (resolution.includes("2048")) resKey = "2K";
         if (resolution.includes("4096")) resKey = "4K";
@@ -5059,12 +5384,13 @@ STYLE REQUIREMENTS:
     }
 
     async function generateVisualization() {
-      const apiKey = $("viz-api-key").value.trim();
+      const apiKey = getApiKeys().google;
       const status = $("viz-status");
       const btn = $("btn-generate-viz");
-      
+
       if (!apiKey) {
-        status.innerHTML = '<span class="text-yellow-400">Please enter your Google AI API key</span>';
+        status.innerHTML = '<span class="text-yellow-400">Add your Google AI key under API keys</span>';
+        openApiKeysModal("Image generation needs your Google AI key.");
         return;
       }
       
@@ -5074,7 +5400,7 @@ STYLE REQUIREMENTS:
       }
       
       const mode = $("viz-mode-value").value || 'schematic';
-      const model = $("viz-model-value").value || 'gemini-2.5-flash-preview-05-20';
+      const model = $("viz-model-value").value || 'gemini-nano-banana-2.1';
       const resolution = $("viz-resolution-value").value || '1024x1024';
       
       btn.disabled = true;
@@ -5307,7 +5633,7 @@ DYNAMICS (if present):
           body: JSON.stringify({ 
             apiKey, 
             prompt: analysisPrompt,
-            model: "gemini-2.5-pro"  // Use best model for thorough analysis
+            model: "gemini-3.8-flash"  // Strong model for thorough analysis (low reasoning level)
           })
         });
         

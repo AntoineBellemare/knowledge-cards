@@ -5,12 +5,16 @@ numpy>=1.26,<2
 tqdm>=4.66,<5
 python-dotenv>=1,<2
 
-# Google Gemini API
+# Google Gemini API (google-genai: per-request API keys; google-generativeai: legacy gemini_cards.py CLI only)
+google-genai>=2.18,<3
 google-generativeai>=0.5,<1
 google-api-core>=2,<3
 google-auth>=2,<3
 google-auth-oauthlib>=1,<2
 googleapis-common-protos>=1,<2
+
+# Anthropic Claude API (models named claude-*)
+anthropic>=1.17,<2
 
 # HTTP / Networking
 requests>=2,<3

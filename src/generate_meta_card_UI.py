@@ -45,7 +45,7 @@ Usage example:
     python generate_meta_card_from_cards.py \
         --input cards/networks_cards.json \
         --output cards/networks_meta_card.json \
-        --model gemini-2.5-flash-lite
+        --model gemini-3.5-flash-lite
 """
 
 import os
@@ -55,8 +55,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-import google.generativeai as genai
-from google.api_core.exceptions import GoogleAPIError, ResourceExhausted, DeadlineExceeded
+
+from claude_client import PromptTooLongError
+from llm import call_llm_json, env_api_keys
 
 
 # ---------------- Gemini setup ----------------
@@ -131,62 +132,6 @@ SPECULATION_SYSTEM_PROMPT = (
     "Each insight should be substantive (2-4 sentences) and reference which papers/ideas it draws from.\n"
     "DO NOT just summarize - SYNTHESIZE and EXTEND beyond what the papers explicitly state."
 )
-
-
-def init_gemini() -> None:
-    """Configure Gemini from GOOGLE_API_KEY (env or .env)."""
-    load_dotenv()
-    key = os.getenv("GOOGLE_API_KEY")
-    if not key:
-        raise RuntimeError("GOOGLE_API_KEY not set.")
-    genai.configure(api_key=key)
-
-
-def call_gemini_json(
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-) -> Dict[str, Any]:
-    """
-    Call Gemini to get JSON output, with a few retries on transient errors.
-    """
-    m = genai.GenerativeModel(
-        model,
-        system_instruction=system_prompt,
-        generation_config={"response_mime_type": "application/json"},
-    )
-    last_err: Optional[Exception] = None
-    last_response_text: Optional[str] = None
-    for attempt in range(3):
-        try:
-            resp = m.generate_content(user_prompt)
-            last_response_text = resp.text
-            return json.loads(resp.text)
-        except (ResourceExhausted, DeadlineExceeded, GoogleAPIError, Exception) as e:
-            last_err = e
-            print(f"[WARN] Gemini attempt {attempt + 1} failed: {e}")
-    
-    # Save failed response for debugging
-    if last_response_text:
-        from pathlib import Path
-        import os
-        # Use /app/results in production or ../results locally
-        results_dir = Path(os.getenv("RESULTS_DIR", "/app/results"))
-        if not results_dir.exists():
-            results_dir = Path(__file__).parent.parent / "results"
-        results_dir.mkdir(parents=True, exist_ok=True)
-        
-        error_file = results_dir / "metacard_error_response.json"
-        print(f"[ERROR] All attempts failed. Saving raw response to {error_file}")
-        print(f"[ERROR] Response preview (first 500 chars): {last_response_text[:500]}")
-        try:
-            error_file.write_text(last_response_text, encoding="utf-8")
-            print(f"[ERROR] Full response saved to {error_file}")
-            print(f"[ERROR] You can download this file from the results directory")
-        except Exception as save_err:
-            print(f"[ERROR] Could not save error response: {save_err}")
-    
-    raise last_err  # type: ignore[arg-type]
 
 
 # ---------------- Data helpers ----------------
@@ -274,19 +219,26 @@ def load_schemas_from_file(path: Path) -> List[Dict[str, Any]]:
     return schemas
 
 
-def build_meta_prompt(schemas: List[Dict[str, Any]], question: Optional[str] = None) -> str:
+def build_meta_prompt(
+    schemas: List[Dict[str, Any]],
+    question: Optional[str] = None,
+    ref_schemas: Optional[List[Dict[str, Any]]] = None,
+    partial: bool = False,
+) -> str:
     """
     Build the user prompt that passes all schemas to Gemini.
-    
+
     Args:
-        schemas: List of individual paper schemas
+        schemas: List of individual paper schemas (or partial meta-cards when partial=True)
         question: The original template question (optional but recommended)
+        ref_schemas: Paper schemas used to build the paper list (defaults to schemas)
+        partial: True when merging partial meta-cards that each cover a subset of the papers
     """
     schemas_str = json.dumps(schemas, ensure_ascii=False, indent=2)
-    
+
     # Extract paper references for the prompt
     paper_refs = []
-    for schema in schemas:
+    for schema in ref_schemas or schemas:
         metadata = schema.get("metadata", {})
         citation = schema.get("citation", {})
         title = metadata.get("title") or citation.get("title") or "Unknown"
@@ -321,12 +273,24 @@ collectively answer this question, with inline citations (Author, Year) after ea
 
 """
 
+    if partial:
+        intro = (
+            "You are given PARTIAL META-CARDS in JSON format. Each one already synthesises a "
+            "subset of the papers listed below. Merge them into one meta-card covering every paper.\n\n"
+        )
+        label = "PARTIAL META-CARDS JSON:\n"
+    else:
+        intro = (
+            "You are given multiple completed reading card SCHEMAS in JSON format. "
+            "Each schema corresponds to one paper and shares the same overall structure.\n\n"
+        )
+        label = "SCHEMAS JSON:\n"
+
     prompt = (
-        "You are given multiple completed reading card SCHEMAS in JSON format. "
-        "Each schema corresponds to one paper and shares the same overall structure.\n\n"
+        intro +
         f"{question_section}"
         f"PAPERS IN THIS CORPUS:\n{papers_list}\n\n"
-        "SCHEMAS JSON:\n"
+        f"{label}"
         "```json\n"
         f"{schemas_str}\n"
         "```\n\n"
@@ -485,7 +449,8 @@ def generate_speculation(
     meta_card: Dict[str, Any],
     schemas: List[Dict[str, Any]],
     question: Optional[str] = None,
-    model: str = "gemini-2.5-flash-lite",
+    model: str = "gemini-3.5-flash-lite",
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """
     Generate speculative insights from the meta-card and original schemas.
@@ -500,7 +465,7 @@ def generate_speculation(
         The speculative_synthesis section as a dict
     """
     prompt = build_speculation_prompt(meta_card, schemas, question)
-    speculation = call_gemini_json(model, SPECULATION_SYSTEM_PROMPT, prompt)
+    speculation = call_llm_json(model, SPECULATION_SYSTEM_PROMPT, prompt, api_keys=api_keys)
     
     # Ensure we have the expected structure
     if "speculative_synthesis" in speculation:
@@ -508,11 +473,39 @@ def generate_speculation(
     return speculation
 
 
+def _synthesize_meta(
+    schemas: List[Dict[str, Any]],
+    model: str,
+    question: Optional[str],
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
+) -> Dict[str, Any]:
+    """
+    One meta-card call, or, if the prompt is too long for the model's standard
+    price tier, a meta-card per half of the papers merged by a final call.
+    """
+    prompt = build_meta_prompt(schemas, question=question)
+    try:
+        return call_llm_json(model, META_SYSTEM_PROMPT, prompt, api_keys=api_keys)
+    except PromptTooLongError as e:
+        if len(schemas) < 2:
+            raise
+        mid = len(schemas) // 2
+        print(f"[INFO] {e} Synthesising {mid} + {len(schemas) - mid} papers separately, then merging.")
+        parts = [
+            _synthesize_meta(schemas[:mid], model, question, api_keys),
+            _synthesize_meta(schemas[mid:], model, question, api_keys),
+        ]
+    # Two partial meta-cards are each bounded by the output limit, so this merge fits.
+    prompt = build_meta_prompt(parts, question=question, ref_schemas=schemas, partial=True)
+    return call_llm_json(model, META_SYSTEM_PROMPT, prompt, api_keys=api_keys)
+
+
 def generate_meta_card(
     schemas: List[Dict[str, Any]],
-    model: str = "gemini-2.5-flash-lite",
+    model: str = "gemini-3.5-flash-lite",
     question: Optional[str] = None,
     include_speculation: bool = True,
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """
     High-level function that generates a meta-card dict from a list of schemas.
@@ -522,13 +515,12 @@ def generate_meta_card(
         model: Gemini model to use
         question: The original research question (used for speculation)
         include_speculation: Whether to generate speculative insights (default True)
+        api_keys: Provider ("google"/"anthropic") -> the user's API key
         
     Returns:
         Complete meta-card with optional speculative_synthesis section
     """
-    init_gemini()
-    prompt = build_meta_prompt(schemas, question=question)
-    meta_card = call_gemini_json(model, META_SYSTEM_PROMPT, prompt)
+    meta_card = _synthesize_meta(schemas, model, question, api_keys)
 
     if not isinstance(meta_card, dict):
         raise ValueError("Gemini did not return a JSON object for the meta-card.")
@@ -537,7 +529,7 @@ def generate_meta_card(
     if include_speculation:
         try:
             print("[INFO] Generating speculative synthesis...")
-            speculation = generate_speculation(meta_card, schemas, question, model)
+            speculation = generate_speculation(meta_card, schemas, question, model, api_keys)
             meta_card["speculative_synthesis"] = speculation
             print("[INFO] Speculative synthesis added to meta-card.")
         except Exception as e:
@@ -559,7 +551,8 @@ def add_speculation_to_existing_meta(
     meta_json_path: Path,
     cards_jsonl_path: Path,
     question: Optional[str] = None,
-    model: str = "gemini-2.5-flash-lite",
+    model: str = "gemini-3.5-flash-lite",
+    api_keys: Optional[Dict[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """
     Add speculative synthesis to an existing meta-card.
@@ -575,7 +568,6 @@ def add_speculation_to_existing_meta(
     Returns:
         Updated meta-card with speculative_synthesis
     """
-    init_gemini()
     
     # Load existing meta-card
     with meta_json_path.open("r", encoding="utf-8") as f:
@@ -596,7 +588,7 @@ def add_speculation_to_existing_meta(
     print(f"[INFO] Question: {question[:100]}..." if question else "[INFO] No question found")
     
     # Generate speculation
-    speculation = generate_speculation(meta_card, schemas, question, model)
+    speculation = generate_speculation(meta_card, schemas, question, model, api_keys)
     meta_card["speculative_synthesis"] = speculation
     
     # Save updated meta-card
@@ -628,8 +620,8 @@ def main() -> None:
     ap.add_argument(
         "--model",
         "-m",
-        default="gemini-2.5-flash-lite",
-        help="Gemini model name (default: gemini-2.5-flash-lite).",
+        default="gemini-3.5-flash-lite",
+        help="Gemini model name (default: gemini-3.5-flash-lite).",
     )
     ap.add_argument(
         "--question",
@@ -649,6 +641,8 @@ def main() -> None:
         help="Add speculation to existing meta-card. Provide path to cards JSONL.",
     )
     args = ap.parse_args()
+    load_dotenv()
+    api_keys = env_api_keys()  # CLI runs use the operator's own keys from .env
 
     in_path = Path(args.input)
     out_path = Path(args.output)
@@ -661,6 +655,7 @@ def main() -> None:
             cards_path,  # Original cards
             question=args.question,
             model=args.model,
+            api_keys=api_keys,
         )
         return
 
@@ -674,6 +669,7 @@ def main() -> None:
         model=args.model,
         question=args.question,
         include_speculation=not args.no_speculation,
+        api_keys=api_keys,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

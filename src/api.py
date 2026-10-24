@@ -15,14 +15,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from generate_card_UI import generate_schema, refine_template, preview_schema_diff
-from gemini_template_creation import run_gemini_cards_with_progress
+from gemini_template_creation import run_gemini_cards_with_progress, load_template_file, EXTRACTION_MODES
+from llm import MissingApiKeyError, missing_providers, server_key_available, PROVIDERS
+from gemini_client import THINKING_LEVELS
 
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR    = Path(__file__).resolve().parent.parent
@@ -38,6 +40,23 @@ def safe_child(base: Path, name: str) -> Path:
     if path is None or path.parent != base.resolve():
         raise HTTPException(status_code=400, detail=f"Invalid name: {name!r}")
     return path
+
+
+def request_api_keys(
+    x_google_api_key: Optional[str] = Header(None),
+    x_anthropic_api_key: Optional[str] = Header(None),
+) -> Dict[str, Optional[str]]:
+    """The user's own provider keys, sent by the browser as request headers (never stored)."""
+    return {
+        "google": (x_google_api_key or "").strip() or None,
+        "anthropic": (x_anthropic_api_key or "").strip() or None,
+    }
+
+
+def require_api_keys(models: List[Optional[str]], api_keys: Dict[str, Optional[str]]) -> None:
+    missing = missing_providers(models, api_keys)
+    if missing:
+        raise HTTPException(status_code=401, detail=str(MissingApiKeyError(missing)))
 
 # ---------- Background Job System ----------
 # Job store with disk persistence for long-running tasks
@@ -385,6 +404,7 @@ class RefineSchemaResponse(BaseModel):
 class SaveSchemaRequest(BaseModel):
     name: str            # e.g. "plant_cognition" or "plant_cognition.json"
     schema: Dict[str, Any]
+    question: Optional[str] = None  # the question the template was generated from
 
 class SaveSchemaResponse(BaseModel):
     ok: bool
@@ -512,12 +532,13 @@ def list_templates():
     for f in files:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
+            schema, question = load_template_file(f)  # also reads older bare-schema files
             templates.append({
                 "id": data.get("id", f.stem),
                 "name": data.get("name", f.stem),
-                "question": data.get("question", ""),
+                "question": question,
                 "createdAt": data.get("createdAt", ""),
-                "schema": data.get("schema", {}),
+                "schema": schema,
             })
         except:
             continue
@@ -525,12 +546,13 @@ def list_templates():
 
 
 @app.post("/schema_from_question", response_model=SchemaResponse)
-def schema_from_question(req: SchemaRequest) -> SchemaResponse:
+def schema_from_question(req: SchemaRequest, api_keys: Dict[str, Optional[str]] = Depends(request_api_keys)) -> SchemaResponse:
     q = req.question.strip()
     if not q:
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
-    model = req.model or "gemini-2.5-flash-lite"
+    model = req.model or "gemini-3.5-flash-lite"
+    require_api_keys([model], api_keys)
     print(f"[API] Generating schema with model: {model}")
     
     try:
@@ -539,6 +561,7 @@ def schema_from_question(req: SchemaRequest) -> SchemaResponse:
             model=model,
             pointers=req.pointers.dict() if req.pointers else {},
             ensure_citations_field=True,
+            api_keys=api_keys,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating schema: {e}")
@@ -547,14 +570,15 @@ def schema_from_question(req: SchemaRequest) -> SchemaResponse:
 
 
 @app.post("/refine_schema", response_model=RefineSchemaResponse)
-def refine_schema_endpoint(req: RefineSchemaRequest) -> RefineSchemaResponse:
+def refine_schema_endpoint(req: RefineSchemaRequest, api_keys: Dict[str, Optional[str]] = Depends(request_api_keys)) -> RefineSchemaResponse:
     """Modify an existing schema using natural language instructions."""
     if not req.schema:
         raise HTTPException(status_code=400, detail="Schema must not be empty.")
     if not req.instruction.strip():
         raise HTTPException(status_code=400, detail="Instruction must not be empty.")
     
-    model = req.model or "gemini-2.5-flash-lite"
+    model = req.model or "gemini-3.5-flash-lite"
+    require_api_keys([model], api_keys)
     print(f"[API] Refining schema with model: {model}")
     print(f"[API] Instruction: {req.instruction[:100]}...")
     if req.target_section:
@@ -565,7 +589,8 @@ def refine_schema_endpoint(req: RefineSchemaRequest) -> RefineSchemaResponse:
             current_schema=req.schema,
             instruction=req.instruction,
             target_section=req.target_section,
-            model=model
+            model=model,
+            api_keys=api_keys,
         )
         diff_summary = preview_schema_diff(req.schema, modified_schema)
     except ValueError as e:
@@ -588,9 +613,16 @@ def save_schema(req: SaveSchemaRequest) -> SaveSchemaResponse:
         name = name + ".json"
 
     path = safe_child(CARDS_DIR, name)
+    # Same {name, question, schema} layout as /save_template, so /list_templates and jobs can read it
+    template = {
+        "name": path.stem,
+        "question": req.question or "",
+        "createdAt": datetime.now().isoformat(),
+        "schema": req.schema,
+    }
     try:
         with path.open("w", encoding="utf-8") as f:
-            json.dump(req.schema, f, ensure_ascii=False, indent=2)
+            json.dump(template, f, ensure_ascii=False, indent=2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not save schema: {e}")
 
@@ -609,13 +641,72 @@ def list_papers_folders() -> PapersFoldersResponse:
     return PapersFoldersResponse(folders=folders)
 
 
+@app.get("/llm_config")
+def llm_config():
+    """Which providers the server will cover with its own key (only when ALLOW_SERVER_API_KEYS is on)."""
+    return {"server_keys": {p: server_key_available(p) for p in PROVIDERS}}
+
+
+class EstimateRequest(BaseModel):
+    papers_subdir: str
+    schema_name: Optional[str] = None
+    template_id: Optional[int] = None
+    model: Optional[str] = None
+    model_reduction: Optional[str] = None
+    batch_size: int = 4
+    mode: str = "detailed"
+
+
+def _load_job_template(schema_name: Optional[str], template_id: Optional[int]):
+    """(schema, question) exactly as a job would load them."""
+    if template_id:
+        from database import SessionLocal
+        from models import Template
+        if SessionLocal is None:
+            raise HTTPException(status_code=503, detail="Database not configured")
+        db = SessionLocal()
+        try:
+            template = db.query(Template).filter(Template.id == template_id).first()
+            if not template:
+                raise HTTPException(status_code=404, detail="Template not found")
+            return template.schema, template.question or ""
+        finally:
+            db.close()
+    if not schema_name:
+        raise HTTPException(status_code=400, detail="Either schema_name or template_id is required")
+    path = safe_child(CARDS_DIR, schema_name if schema_name.endswith(".json") else schema_name + ".json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Schema not found")
+    return load_template_file(path)
+
+
+@app.post("/estimate_cost")
+def estimate_cost(req: EstimateRequest):
+    """Rough cost of a job for the selected models and for every model in the menu."""
+    from cost_estimate import MODEL_PRICES, estimate_job
+
+    papers_dir = safe_child(PAPERS_DIR, req.papers_subdir)
+    pdfs = sorted(papers_dir.glob("*.pdf")) if papers_dir.is_dir() else []
+    if not pdfs:
+        raise HTTPException(status_code=404, detail="No PDFs found in this folder")
+    model = req.model or "gemini-3.5-flash-lite"
+    for m in (model, req.model_reduction):
+        if m and m not in MODEL_PRICES:
+            raise HTTPException(status_code=400, detail=f"No price data for model {m!r}")
+    if req.mode not in EXTRACTION_MODES:
+        raise HTTPException(status_code=400, detail=f"Unknown cost mode {req.mode!r}")
+    schema, question = _load_job_template(req.schema_name, req.template_id)
+    return estimate_job(pdfs, schema, question, model, req.model_reduction, req.batch_size, req.mode)
+
+
 @app.get("/run_gemini_stream")
 async def run_gemini_stream(
     papers_subdir: str, 
     schema_name: Optional[str] = None, 
     template_id: Optional[int] = None,
     model: Optional[str] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    api_keys: Dict[str, Optional[str]] = Depends(request_api_keys),
 ):
     """
     SSE endpoint for real-time progress during card generation.
@@ -625,6 +716,7 @@ async def run_gemini_stream(
     safe_child(PAPERS_DIR, papers_subdir)
     if schema_name:
         safe_child(CARDS_DIR, schema_name)
+    require_api_keys([model or "gemini-3.5-flash-lite"], api_keys)
 
     # If template_id is provided, fetch schema from database
     schema_data = None
@@ -677,6 +769,7 @@ async def run_gemini_stream(
                     progress_callback=progress_callback,
                     schema_data=schema_data,  # Pass schema directly if from DB
                     template_question=template_question,  # Pass the original question
+                    api_keys=api_keys,
                 )
                 result_holder["result"] = result
             except Exception as e:
@@ -717,7 +810,7 @@ async def run_gemini_stream(
             def to_rel(p: Path) -> str:
                 p = Path(p).resolve()
                 try:
-                    return str(p.relative_to(ROOT_DIR))
+                    return p.relative_to(ROOT_DIR).as_posix()  # "/" on every OS, for URLs
                 except ValueError:
                     return f"results/{p.name}"
             
@@ -730,7 +823,7 @@ async def run_gemini_stream(
                         template_id=db_template_id,
                         template_name=template_name,
                         papers_folder=papers_subdir,
-                        model_used=model or "gemini-2.5-flash-lite",
+                        model_used=model or "gemini-3.5-flash-lite",
                         jsonl_path=jsonl_path
                     )
                 except Exception as e:
@@ -777,7 +870,9 @@ def start_build_job(
     model_reduction: Optional[str] = None,
     batch_size: Optional[int] = 4,
     user_id: Optional[int] = None,
-    background_tasks: BackgroundTasks = None
+    mode: str = "detailed",
+    background_tasks: BackgroundTasks = None,
+    api_keys: Dict[str, Optional[str]] = Depends(request_api_keys),
 ):
     """
     Start a background job for card generation.
@@ -791,10 +886,14 @@ def start_build_job(
         model_reduction: Model for reduction passes (defaults to same as model)
         batch_size: Number of cards to reduce per batch (default 4)
         user_id: User ID for database storage
+        mode: Cost mode (detailed, balanced, economy)
     """
     safe_child(PAPERS_DIR, papers_subdir)
     if schema_name:
         safe_child(CARDS_DIR, schema_name)
+    require_api_keys([model or "gemini-3.5-flash-lite", model_reduction], api_keys)
+    if mode not in EXTRACTION_MODES:
+        raise HTTPException(status_code=400, detail=f"Unknown cost mode {mode!r}")
 
     # Cleanup old jobs periodically
     cleanup_old_jobs()
@@ -851,6 +950,7 @@ def start_build_job(
                 return is_job_cancelled(job_id)
             
             print(f"[JOB {job_id}] Calling run_gemini_cards_with_progress...")
+            failed_papers: List[Dict[str, str]] = []
             jsonl_path, csv_path, pdf_path = run_gemini_cards_with_progress(
                 schema_name=template_name,
                 papers_folder=papers_subdir,
@@ -861,6 +961,9 @@ def start_build_job(
                 schema_data=schema_data,
                 template_question=template_question,
                 cancellation_check=cancellation_check,
+                api_keys=api_keys,  # kept in memory only; never written to the job file
+                mode=mode,
+                failed_papers=failed_papers,
             )
             print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
             print(f"[JOB {job_id}] run_gemini_cards_with_progress completed")
@@ -868,7 +971,7 @@ def start_build_job(
             def to_rel(p: Path) -> str:
                 p = Path(p).resolve()
                 try:
-                    return str(p.relative_to(ROOT_DIR))
+                    return p.relative_to(ROOT_DIR).as_posix()  # "/" on every OS, for URLs
                 except ValueError:
                     return f"results/{p.name}"
             
@@ -881,16 +984,21 @@ def start_build_job(
                         template_id=db_template_id,
                         template_name=template_name,
                         papers_folder=papers_subdir,
-                        model_used=model or "gemini-2.5-flash-lite",
+                        model_used=model or "gemini-3.5-flash-lite",
                         jsonl_path=jsonl_path
                     )
                 except Exception as e:
                     print(f"[JOB {job_id}] Failed to save collection: {e}")
             
+            meta_pdf = Path(pdf_path).with_name(Path(pdf_path).stem + "__meta.pdf")
+            meta_json = Path(jsonl_path).with_name(Path(jsonl_path).stem + "__meta.json")
             complete_job(job_id, {
                 'jsonl': to_rel(jsonl_path),
                 'csv': to_rel(csv_path),
                 'pdf': to_rel(pdf_path),
+                'meta_pdf': to_rel(meta_pdf) if meta_pdf.exists() else None,
+                'meta_json': to_rel(meta_json) if meta_json.exists() else None,
+                'failed_papers': failed_papers,
                 'schema_name': template_name,
                 'papers_folder': papers_subdir,
                 'collection_id': collection_id,
@@ -986,16 +1094,18 @@ def manual_cleanup_jobs():
 
 
 @app.post("/run_gemini", response_model=RunGeminiResponse)
-def run_gemini(req: RunGeminiRequest) -> RunGeminiResponse:
+def run_gemini(req: RunGeminiRequest, api_keys: Dict[str, Optional[str]] = Depends(request_api_keys)) -> RunGeminiResponse:
     """Legacy non-streaming endpoint (kept for compatibility)."""
     from gemini_template_creation import run_gemini_cards
     safe_child(PAPERS_DIR, req.papers_subdir)
     safe_child(CARDS_DIR, req.schema_name)
+    require_api_keys([req.model or "gemini-3.5-flash-lite"], api_keys)
     try:
         jsonl_path, csv_path, pdf_path = run_gemini_cards(
             schema_name=req.schema_name,
             papers_folder=req.papers_subdir,
             model=req.model,
+            api_keys=api_keys,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error running Gemini cards: {e}")
@@ -1088,7 +1198,10 @@ async def download_file(file_type: str, filename: str):
     elif filename.endswith(".jsonl") or filename.endswith(".json"):
         media_type = "application/json"
     
-    return FileResponse(file_path, media_type=media_type, filename=filename)
+    # PDFs open in the browser tab; other files download
+    disposition = "inline" if media_type == "application/pdf" else "attachment"
+    return FileResponse(file_path, media_type=media_type, filename=filename,
+                        content_disposition_type=disposition)
 
 
 @app.delete("/papers/{folder_name}")
@@ -1107,7 +1220,7 @@ async def delete_papers_folder(folder_name: str):
 class TextRequest(BaseModel):
     apiKey: str
     prompt: str
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-3.8-flash"
 
 
 @app.post("/generate_text")
@@ -1131,12 +1244,14 @@ async def generate_text(req: TextRequest):
         async with httpx.AsyncClient(timeout=90.0) as client:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             
+            # No temperature: Gemini 3.6+ ignores it and later models reject it.
+            # maxOutputTokens includes thinking tokens, so leave room beyond the visible answer.
+            generation_config = {"maxOutputTokens": 8192}
+            if model in THINKING_LEVELS:
+                generation_config["thinkingConfig"] = {"thinkingLevel": THINKING_LEVELS[model]}
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "maxOutputTokens": 4000
-                }
+                "generationConfig": generation_config,
             }
             
             response = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
@@ -1175,65 +1290,35 @@ async def generate_text(req: TextRequest):
 def calculate_image_cost(model: str, prompt_tokens: int, output_tokens: int, thoughts_tokens: int, resolution: str = "1024x1024") -> dict:
     """Calculate estimated cost based on model and token usage."""
     
-    # Pricing per 1M tokens (as of Dec 2025)
-    # Gemini 3 Pro Image: images are billed as output tokens
-    # - 1K/2K (up to 2048px): 1120 tokens per image = $0.134 at $120/1M
-    # - 4K (up to 4096px): 2000 tokens per image = $0.24 at $120/1M
-    
+    # Pricing per 1M tokens (as of 2026-10-23). Images are billed as image-output tokens,
+    # shown here as the per-image equivalent for each resolution.
     pricing = {
-        "gemini-2.5-flash-image": {
-            "input": 0.30,      # $0.30 / 1M tokens
-            "output": 2.50,     # $2.50 / 1M tokens (text)
-            "image_1k": 0.039,  # $0.039 per image (1290 tokens at $30/1M)
-            "image_2k": 0.039,
-            "image_4k": 0.039,  # Same price for flash
+        "gemini-nano-banana-2.1": {
+            "input": 1.50,       # $1.50 / 1M tokens
+            "output": 7.50,      # $7.50 / 1M text tokens (includes thinking)
+            "image_1k": 0.0336,  # $30 / 1M image tokens
+            "image_2k": 0.0504,
+            "image_4k": 0.113,
         },
-        "gemini-2.0-flash": {
-            "input": 0.10,
-            "output": 0.40,
+        "gemini-3-pro-image": {
+            "input": 2.00,       # $2.00 / 1M tokens
+            "output": 12.00,     # $12.00 / 1M text tokens (includes thinking)
+            "image_1k": 0.134,   # $120 / 1M image tokens
+            "image_2k": 0.134,
+            "image_4k": 0.24,
+        },
+        "gemini-2.5-flash-image": {  # legacy, shuts down 2027-03-15
+            "input": 0.30,
+            "output": 2.50,
             "image_1k": 0.039,
             "image_2k": 0.039,
             "image_4k": 0.039,
         },
-        "gemini-3-pro-image-preview": {
-            "input": 2.00,       # $2.00 / 1M tokens
-            "output": 12.00,     # $12.00 / 1M tokens (includes thinking)
-            "image_1k": 0.134,   # 1120 tokens at $120/1M
-            "image_2k": 0.134,   # Same as 1K
-            "image_4k": 0.24,    # 2000 tokens at $120/1M
-        },
-        "nano-banana-pro-preview": {  # Same as gemini-3-pro-image-preview
-            "input": 2.00,
-            "output": 12.00,
-            "image_1k": 0.134,
-            "image_2k": 0.134,
-            "image_4k": 0.24,
-        },
-        "imagen-4.0-generate-001": {
-            "image_1k": 0.04,
-            "image_2k": 0.04,
-            "image_4k": 0.04,
-        },
-        "imagen-4.0-fast-generate-001": {
-            "image_1k": 0.02,
-            "image_2k": 0.02,
-            "image_4k": 0.02,
-        },
-        "imagen-4.0-ultra-generate-001": {
-            "image_1k": 0.06,
-            "image_2k": 0.06,
-            "image_4k": 0.06,
-        },
-        "imagen-3.0-generate-002": {
-            "image_1k": 0.03,
-            "image_2k": 0.03,
-            "image_4k": 0.03,
-        },
     }
-    
-    # Get pricing for model (default to gemini-2.5-flash-image pricing)
-    model_pricing = pricing.get(model, pricing["gemini-2.5-flash-image"])
-    
+
+    # Get pricing for model (default to Nano Banana 2.1 pricing)
+    model_pricing = pricing.get(model, pricing["gemini-nano-banana-2.1"])
+
     # Determine image price based on resolution
     if "4096" in resolution or "4k" in resolution.lower():
         image_cost = model_pricing.get("image_4k", 0.039)
@@ -1265,7 +1350,7 @@ def calculate_image_cost(model: str, prompt_tokens: int, output_tokens: int, tho
 class VisionRequest(BaseModel):
     apiKey: str
     prompt: str
-    model: str = "gemini-2.5-flash-image"
+    model: str = "gemini-nano-banana-2.1"
     resolution: str = "1024x1024"  # "1024x1024", "2048x2048", "4096x4096"
 
 
@@ -1460,6 +1545,10 @@ async def generate_vision(req: VisionRequest):
                     usage = result.get("usageMetadata", {})
                     prompt_tokens = usage.get("promptTokenCount", 0)
                     output_tokens = usage.get("candidatesTokenCount", 0)
+                    # The image's own tokens are priced per image, so only bill the text part here
+                    image_tokens = sum(d.get("tokenCount", 0) for d in usage.get("candidatesTokensDetails", [])
+                                       if d.get("modality") == "IMAGE")
+                    output_tokens = max(0, output_tokens - image_tokens)
                     thoughts_tokens = usage.get("thoughtsTokenCount", 0)
                     total_tokens = usage.get("totalTokenCount", 0)
                     
